@@ -4,6 +4,8 @@ Captured on: 2026-07-31 (darwin arm64)
 Working directory for research: `/Users/jianguo/IdeaProjects/AgentMind`  
 Scope: non-interactive / scripted argv useful for prompt, model, reasoning/effort, and cwd.
 
+**Adapter source of truth (confirmed 2026-07-31):** Engine adapters under `src-tauri/src/engines/` implement the Recommended templates below. Re-run `--help` only if a binary major-version bumps; amend this file before changing argv.
+
 ---
 
 ## Summary

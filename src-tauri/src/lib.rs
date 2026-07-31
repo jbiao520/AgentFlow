@@ -1,5 +1,6 @@
 mod commands;
 mod db;
+mod engines;
 mod repo;
 mod services;
 mod state;
