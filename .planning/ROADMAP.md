@@ -22,7 +22,7 @@
 
 Plans:
 - [x] 01-01: 初始化 Tauri 2 + vanilla-ts，迁入原型样式与五视图结构 — `.planning/phases/01-foundation/01-01-PLAN.md`
-- [ ] 01-02: 类型化视图路由 + Cmd+K/导入/Skill 弹窗 — `.planning/phases/01-foundation/01-02-PLAN.md`
+- [x] 01-02: 类型化视图路由 + Cmd+K/导入/Skill 弹窗 — `.planning/phases/01-foundation/01-02-PLAN.md`
 - [ ] 01-03: Tauri commands（ping / app_info / reveal_in_finder）+ 前端 API 层 — `.planning/phases/01-foundation/01-03-PLAN.md`
 
 ### Phase 2: Persistence

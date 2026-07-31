@@ -1,13 +1,17 @@
 import shellHtml from "./ui/app-shell.html?raw";
-import { initPrototypeActions } from "./ui/prototype-actions";
+import { initDemoActions } from "./ui/demo-actions";
+import { bindModals } from "./ui/modals";
+import { bindNav } from "./ui/nav";
 
-function mountApp() {
+function mountApp(): void {
   const root = document.getElementById("app");
   if (!root) {
     throw new Error("#app root missing");
   }
   root.innerHTML = shellHtml;
-  initPrototypeActions();
+  bindNav();
+  bindModals();
+  initDemoActions();
 }
 
 window.addEventListener("DOMContentLoaded", () => {

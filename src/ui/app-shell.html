@@ -13,7 +13,7 @@
     </div>
 
     <div class="titlebar-actions">
-      <div class="cmd-k-trigger" onclick="openCmdKModal()" data-od-id="cmd-k-btn">
+      <div class="cmd-k-trigger" data-od-id="cmd-k-btn" role="button" tabindex="0">
         <span>搜索 Agent 或快捷触发</span>
         <span class="cmd-kbd">⌘K</span>
       </div>
@@ -27,7 +27,7 @@
       <div>
         <div class="nav-section-title">Views</div>
         <ul class="nav-list">
-          <li class="nav-item active" onclick="switchView('overview', this)" data-od-id="nav-overview">
+          <li class="nav-item active" data-view="overview" data-od-id="nav-overview" role="button" tabindex="0">
             <div class="nav-item-left">
               <span class="nav-icon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
@@ -36,7 +36,7 @@
             </div>
             <span class="nav-count">6</span>
           </li>
-          <li class="nav-item" onclick="switchView('agents', this)" data-od-id="nav-agents">
+          <li class="nav-item" data-view="agents" data-od-id="nav-agents" role="button" tabindex="0">
             <div class="nav-item-left">
               <span class="nav-icon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M4 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7z"/><circle cx="9" cy="15" r="1"/><circle cx="15" cy="15" r="1"/></svg>
@@ -45,7 +45,7 @@
             </div>
             <span class="nav-count">6</span>
           </li>
-          <li class="nav-item" onclick="switchView('agent-detail', this)" data-od-id="nav-agent-detail">
+          <li class="nav-item" data-view="agent-detail" data-od-id="nav-agent-detail" role="button" tabindex="0">
             <div class="nav-item-left">
               <span class="nav-icon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -53,7 +53,7 @@
               <span>Agent 详情配置</span>
             </div>
           </li>
-          <li class="nav-item" onclick="switchView('commander', this)" data-od-id="nav-commander">
+          <li class="nav-item" data-view="commander" data-od-id="nav-commander" role="button" tabindex="0">
             <div class="nav-item-left">
               <span class="nav-icon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3z"/></svg>
@@ -62,7 +62,7 @@
             </div>
             <span class="nav-count" style="background: rgba(37,99,235,0.12); color:#2563eb;">Hub</span>
           </li>
-          <li class="nav-item" onclick="switchView('tasks', this)" data-od-id="nav-tasks">
+          <li class="nav-item" data-view="tasks" data-od-id="nav-tasks" role="button" tabindex="0">
             <div class="nav-item-left">
               <span class="nav-icon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
@@ -859,7 +859,7 @@
 </div>
 
 <!-- Command + K Modal Dialog -->
-<div class="modal-overlay" id="cmdk-modal" onclick="closeCmdKModal(event)">
+<div class="modal-overlay" id="cmdk-modal" aria-hidden="true">
   <div class="modal-card" onclick="event.stopPropagation()">
     <div style="display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--border-color); padding-bottom:10px; margin-bottom:14px;">
       <input type="text" class="form-input" style="border:none; font-size:14px;" placeholder="快速搜索 Agent、Skill 或直接触发指令..." oninput="filterCmdK(this)" autofocus />
@@ -868,13 +868,13 @@
 
     <div style="font-size:10.5px; color:var(--fg-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;">Quick Nav</div>
     <div style="display:flex; flex-direction:column; gap:4px;">
-      <div class="nav-item" onclick="switchView('overview', document.querySelector('[data-od-id=nav-overview]')); closeCmdKModal();">
+      <div class="nav-item" data-cmdk-view="overview" role="button" tabindex="0">
         <span>跳转至 全局总览</span>
       </div>
-      <div class="nav-item" onclick="switchView('commander', document.querySelector('[data-od-id=nav-commander]')); closeCmdKModal();">
+      <div class="nav-item" data-cmdk-view="commander" role="button" tabindex="0">
         <span>启动 调度中枢工作台</span>
       </div>
-      <div class="nav-item" onclick="switchView('tasks', document.querySelector('[data-od-id=nav-tasks]')); closeCmdKModal();">
+      <div class="nav-item" data-cmdk-view="tasks" role="button" tabindex="0">
         <span>查看 运行中的 DAG 任务</span>
       </div>
     </div>
@@ -882,7 +882,7 @@
 </div>
 
 <!-- Import / Create Agent Modal -->
-<div class="modal-overlay" id="import-modal" onclick="closeImportModal(event)">
+<div class="modal-overlay" id="import-modal" aria-hidden="true">
   <div class="modal-card" onclick="event.stopPropagation()">
     <h3 style="font-size:15px; font-weight:700; margin-bottom:8px; color:var(--fg-primary);">导入或新建 Agent 工作区</h3>
     <p style="font-size:12px; color:var(--fg-muted); margin-bottom:14px;">指定本地或远程工作区路径，系统将自动扫描 <code>.agent/skills/</code> 技能描述。</p>
@@ -908,13 +908,13 @@
 
     <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
       <button class="btn btn-secondary" onclick="closeImportModal()">取消</button>
-      <button class="btn btn-primary" onclick="showToast('成功接入新 Agent 工作区！自动完成 3 个技能感知。'); closeImportModal();">完成导入并感知 Skill</button>
+      <button class="btn btn-primary" onclick="submitImportModal()">完成导入并感知 Skill</button>
     </div>
   </div>
 </div>
 
 <!-- Skill Detail Modal -->
-<div class="modal-overlay" id="skill-modal" onclick="closeSkillDetailModal(event)">
+<div class="modal-overlay" id="skill-modal" aria-hidden="true">
   <div class="modal-card" onclick="event.stopPropagation()" style="width:580px;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
       <h3 style="font-size:14px; font-weight:700; font-family:var(--font-mono);" id="skill-modal-filename">skill-file.md</h3>
