@@ -78,19 +78,16 @@
       <div class="cli-engine-widget" data-od-id="cli-widget">
         <div class="cli-widget-header">
           <span>CLI Engines & Drivers</span>
-          <span style="color: var(--accent-emerald);">3/3 Active</span>
+          <span style="display:flex;align-items:center;gap:8px;">
+            <span id="cli-active-count" style="color: var(--accent-emerald);">…</span>
+            <button type="button" id="cli-refresh-btn" class="cli-refresh-btn" title="Refresh CLI probe">↻</button>
+          </span>
         </div>
-        <div class="cli-item">
-          <div class="cli-name"><div class="status-dot working"></div>cursor-agent (playwright)</div>
-          <span style="font-size:10px; color:var(--fg-muted); font-family:var(--font-mono);">headless</span>
-        </div>
-        <div class="cli-item">
-          <div class="cli-name"><div class="status-dot"></div>codex cli (data/ocr)</div>
-          <span style="font-size:10px; color:var(--fg-muted); font-family:var(--font-mono);">high reasoning</span>
-        </div>
-        <div class="cli-item">
-          <div class="cli-name"><div class="status-dot"></div>opencode cli (api/bot)</div>
-          <span style="font-size:10px; color:var(--fg-muted); font-family:var(--font-mono);">v2.4.1</span>
+        <div id="cli-engine-list">
+          <div class="cli-item">
+            <div class="cli-name"><div class="status-dot offline"></div>probing…</div>
+            <span style="font-size:10px; color:var(--fg-muted); font-family:var(--font-mono);">—</span>
+          </div>
         </div>
       </div>
     </aside>

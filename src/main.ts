@@ -3,6 +3,7 @@ import { initDetailConfig } from "./ui/agents/detail-config";
 import { initDetailSkills } from "./ui/agents/detail-skills";
 import { initAgentMatrix } from "./ui/agents/matrix";
 import { initAppInfo } from "./ui/app-info";
+import { initCliWidget } from "./ui/cli-widget";
 import { initDemoActions } from "./ui/demo-actions";
 import { bindModals } from "./ui/modals";
 import { bindNav } from "./ui/nav";
@@ -19,6 +20,7 @@ function mountApp(): void {
   initAgentMatrix();
   initDetailSkills();
   initDetailConfig();
+  initCliWidget();
   void initAppInfo();
 }
 

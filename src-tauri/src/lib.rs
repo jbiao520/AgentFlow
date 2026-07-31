@@ -8,6 +8,7 @@ use commands::agents::{
     delete_agent, get_agent_profile, import_agent, list_agents, list_skills, read_skill_content,
     set_skill_enabled, sync_agent_skills, upsert_agent, upsert_agent_profile, upsert_skills,
 };
+use commands::cli::{list_cli_engine_status, probe_cli_engines};
 use commands::db::db_health;
 use commands::settings::{get_orchestrator_settings, update_orchestrator_settings};
 use commands::system::{app_info, ping, reveal_in_finder};
@@ -43,6 +44,8 @@ pub fn run() {
             read_skill_content,
             get_orchestrator_settings,
             update_orchestrator_settings,
+            probe_cli_engines,
+            list_cli_engine_status,
             create_goal,
             save_plan,
             create_task_run,

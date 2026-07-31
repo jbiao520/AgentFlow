@@ -289,6 +289,25 @@
       box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.2);
       animation: pulse 1.8s infinite;
     }
+    .status-dot.offline {
+      background: var(--fg-muted);
+      opacity: 0.55;
+      box-shadow: none;
+      animation: none;
+    }
+
+    .cli-refresh-btn {
+      border: none;
+      background: transparent;
+      color: var(--fg-muted);
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1;
+      padding: 0 2px;
+    }
+    .cli-refresh-btn:hover {
+      color: var(--fg-primary);
+    }
 
     @keyframes pulse {
       0% { transform: scale(1); opacity: 1; }

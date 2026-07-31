@@ -10,10 +10,12 @@ import {
   getTaskRun,
   insertTaskNodes,
   listAgents,
+  listCliEngineStatus,
   listSkills,
   listTaskLogs,
   listTaskRuns,
   ping,
+  probeCliEngines,
   revealInFinder,
   savePlan,
   setSkillEnabled,
@@ -78,5 +80,7 @@ export async function initAppInfo(): Promise<void> {
     appendTaskLog,
     listTaskLogs,
     updateRunProgress,
+    probeCliEngines,
+    listCliEngineStatus,
   };
 }
