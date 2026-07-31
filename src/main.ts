@@ -8,6 +8,8 @@ import { initCliWidget } from "./ui/cli-widget";
 import { initDemoActions } from "./ui/demo-actions";
 import { bindModals } from "./ui/modals";
 import { bindNav } from "./ui/nav";
+import { initOrchestratorSettings } from "./ui/orchestrator/settings";
+import { initOrchestratorWorkbench } from "./ui/orchestrator/workbench";
 
 function mountApp(): void {
   const root = document.getElementById("app");
@@ -23,6 +25,8 @@ function mountApp(): void {
   initDetailConfig();
   initSandbox();
   initCliWidget();
+  initOrchestratorSettings();
+  initOrchestratorWorkbench();
   void initAppInfo();
 }
 

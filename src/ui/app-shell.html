@@ -422,6 +422,45 @@
           </div>
         </div>
 
+        <!-- Orchestrator brain settings (independent of worker agents) -->
+        <div class="orch-settings-panel card-panel" data-od-id="orch-settings-panel" style="margin-bottom:14px;">
+          <div class="panel-title-bar">
+            <div class="panel-title">调度中枢配置 (Orchestrator)</div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-save-orch-settings">保存配置</button>
+          </div>
+          <div class="orch-settings-grid">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" for="orch-cli-select">CLI Engine</label>
+              <select class="form-select" id="orch-cli-select">
+                <option value="cursor-agent">Cursor Agent</option>
+                <option value="codex">Codex</option>
+                <option value="opencode">OpenCode</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" for="orch-model-select">Model</label>
+              <select class="form-select" id="orch-model-select">
+                <option value="sol">sol</option>
+                <option value="claude-3.7-sonnet">claude-3.7-sonnet</option>
+                <option value="gpt-5.6-terra">gpt-5.6-terra</option>
+                <option value="gpt-4o-latest">gpt-4o-latest</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Reasoning</label>
+              <div class="reasoning-pills" id="orch-reasoning-pills">
+                <div class="reasoning-pill" data-reasoning="low">Low</div>
+                <div class="reasoning-pill active" data-reasoning="medium">Medium</div>
+                <div class="reasoning-pill" data-reasoning="high">High</div>
+              </div>
+            </div>
+          </div>
+          <details style="margin-top:10px;">
+            <summary style="font-size:11px; color:var(--fg-muted); cursor:pointer;">高级：从 JSON 夹具编排（跳过实时 CLI）</summary>
+            <textarea id="orch-fixture-json" class="form-textarea" rows="4" placeholder='粘贴 Plan JSON（SPEC §7.4）后点 Orchestrate' style="margin-top:6px; font-family:var(--font-mono); font-size:11px;"></textarea>
+          </details>
+        </div>
+
         <!-- High-level Prompt Input Box -->
         <div class="commander-prompt-box" data-od-id="commander-prompt-box">
           <textarea class="commander-input" id="commander-prompt-text" placeholder="输入综合自动化与运营目标...">启动 Playwright 抓取竞品 A/B/C 网站的最新产品价格与促销活动，由 research-collector 提取 JSON 并汇总对比，生成 Markdown 竞品简报，并调用 workflow-orchestrator 自动发送到飞书工作群。</textarea>
@@ -434,89 +473,14 @@
               <span class="chip-item" onclick="fillCommanderTemplate(3)">跨平台文章自动排版发布</span>
             </div>
 
-            <button class="btn btn-primary" onclick="startOrchestration()" id="start-orch-btn" data-od-id="start-orch-btn">
+            <button class="btn btn-primary" type="button" id="start-orch-btn" data-od-id="start-orch-btn">
               <span>启动智能调度拆解 (Orchestrate)</span>
             </button>
           </div>
         </div>
 
-        <!-- Orchestration Workflow Flow -->
-        <div id="orch-results" class="orchestration-flow" data-od-id="orch-results">
-          <div class="panel-title-bar">
-            <div class="panel-title">智能调度拆解与路由方案</div>
-            <button class="btn btn-primary btn-sm" onclick="dispatchCommanderTask()" style="background:var(--accent-emerald);">确认并分发任务 (Dispatch)</button>
-          </div>
-
-          <!-- Step 1 -->
-          <div class="orch-step-card">
-            <div class="step-number">1</div>
-            <div class="step-content">
-              <div class="step-header">
-                <div class="step-title">意图分析 (Intent Analysis)</div>
-                <span class="skill-tag" style="background:rgba(5,150,105,0.1); color:#047857;">Web Automation & Market Intel</span>
-              </div>
-              <p style="font-size:12px; color:var(--fg-secondary);">
-                检测到综合任务流需求：包含 Playwright 无头浏览器网页抓取、多维度数据清洗提取、Markdown 简报生成与飞书机器人自动化通知。
-              </p>
-            </div>
-          </div>
-
-          <!-- Step 2 -->
-          <div class="orch-step-card">
-            <div class="step-number">2</div>
-            <div class="step-content">
-              <div class="step-header">
-                <div class="step-title">任务子目标拆解 (Task Decomposition)</div>
-                <span style="font-size:11px; color:var(--fg-muted);">3 个关联子任务</span>
-              </div>
-              <div style="font-size:12px; line-height:1.6; color:var(--fg-secondary); font-family:var(--font-mono);">
-                <div style="margin-bottom:3px;">1. [web-browser-ops] 启动 Playwright 访问 3 个竞品官网，抓取价格与促销 DOM 文本。</div>
-                <div style="margin-bottom:3px;">2. [research-collector] 结构化提炼 JSON 数据，清洗并汇总生成 Markdown 竞品周报。</div>
-                <div>3. [workflow-orchestrator] 触发飞书 Webhook 接口，将格式化简报推送至指定频道。</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Step 3 -->
-          <div class="orch-step-card">
-            <div class="step-number">3</div>
-            <div class="step-content">
-              <div class="step-header">
-                <div class="step-title">Agent & Skill & Model 路由矩阵</div>
-              </div>
-              <table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:6px;">
-                <thead>
-                  <tr style="text-align:left; color:var(--fg-muted); border-bottom:1px solid var(--border-color); font-size:11px; text-transform:uppercase;">
-                    <th style="padding:6px;">子任务</th>
-                    <th style="padding:6px;">分配 Agent</th>
-                    <th style="padding:6px;">调用的 Skill</th>
-                    <th style="padding:6px;">Model & Reasoning</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr style="border-bottom:1px solid var(--border-color);">
-                    <td style="padding:6px;">Task #1 网页价格抓取</td>
-                    <td style="padding:6px; font-weight:600; color:#d97706; font-family:var(--font-mono);">web-browser-ops</td>
-                    <td style="padding:6px;"><span class="skill-tag">playwright-crawler.md</span></td>
-                    <td style="padding:6px; font-family:var(--font-mono); color:#7c3aed;">cursor-agent (claude-3.7)</td>
-                  </tr>
-                  <tr style="border-bottom:1px solid var(--border-color);">
-                    <td style="padding:6px;">Task #2 数据清洗与简报</td>
-                    <td style="padding:6px; font-weight:600; color:#2563eb; font-family:var(--font-mono);">research-collector</td>
-                    <td style="padding:6px;"><span class="skill-tag">llm-summarizer.md</span></td>
-                    <td style="padding:6px; font-family:var(--font-mono); color:#7c3aed;">codex / sol (medium)</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:6px;">Task #3 飞书卡片推送</td>
-                    <td style="padding:6px; font-weight:600; color:#059669; font-family:var(--font-mono);">workflow-orchestrator</td>
-                    <td style="padding:6px;"><span class="skill-tag">feishu-notifier.md</span></td>
-                    <td style="padding:6px; font-family:var(--font-mono); color:#7c3aed;">opencode (gpt-4o)</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <!-- Orchestration Workflow Flow (filled by workbench.ts) -->
+        <div id="orch-results" class="orchestration-flow" data-od-id="orch-results" style="display:none;"></div>
       </div>
 
       <!-- ===================================================================

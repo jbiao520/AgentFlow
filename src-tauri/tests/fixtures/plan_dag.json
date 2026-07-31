@@ -1,0 +1,30 @@
+{
+  "intent": {
+    "summary": "Multi-step research pipeline",
+    "tags": ["research"]
+  },
+  "subtasks": [
+    {
+      "id": "t1",
+      "title": "Collect raw notes",
+      "agent": "research-bot",
+      "skills": [],
+      "depends_on": [],
+      "cli_engine": "codex",
+      "model": "sol",
+      "reasoning_effort": "low",
+      "prompt": "Write notes.md with three bullet findings."
+    },
+    {
+      "id": "t2",
+      "title": "Summarize notes",
+      "agent": "research-bot",
+      "skills": [],
+      "depends_on": ["t1"],
+      "cli_engine": "codex",
+      "model": "sol",
+      "reasoning_effort": "medium",
+      "prompt": "Read notes.md and write summary.md."
+    }
+  ]
+}

@@ -45,20 +45,8 @@ export function initDemoActions(): void {
     showToast("已载入模版，准备拆解");
   }
 
-  function startOrchestration(): void {
-    const btn = document.getElementById("start-orch-btn");
-    if (!btn) return;
-    btn.innerHTML = "正在分析意图与建图 (Orchestrating)...";
-    (btn as HTMLElement).style.opacity = "0.7";
-    window.setTimeout(() => {
-      btn.innerHTML = "启动智能调度拆解 (Orchestrate)";
-      (btn as HTMLElement).style.opacity = "1";
-      showToast("调度拆解完成！包含 3 个子任务与路由矩阵");
-    }, 450);
-  }
-
   function dispatchCommanderTask(): void {
-    showToast("任务已成功分发至对应 Repo 协同队列！");
+    showToast("请先完成调度拆解；Dispatch 将在 Phase 05-02 接通");
     showView("tasks");
   }
 
@@ -196,7 +184,6 @@ export function initDemoActions(): void {
     openSkillDetailModal,
     closeSkillDetailModal,
     fillCommanderTemplate,
-    startOrchestration,
     dispatchCommanderTask,
     runSandboxTest,
     clearLogs,

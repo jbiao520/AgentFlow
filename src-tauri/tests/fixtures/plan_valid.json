@@ -1,0 +1,20 @@
+{
+  "intent": {
+    "summary": "Scrape competitor pricing with Playwright",
+    "tags": ["web-automation"]
+  },
+  "subtasks": [
+    {
+      "id": "t1",
+      "title": "Scrape competitor prices",
+      "agent": "web-ops",
+      "skills": ["playwright-crawler.md"],
+      "depends_on": [],
+      "cli_engine": "codex",
+      "model": "sol",
+      "reasoning_effort": "medium",
+      "prompt": "Open the competitor sites and extract prices into JSON.",
+      "artifact_paths": ["summary.md"]
+    }
+  ]
+}

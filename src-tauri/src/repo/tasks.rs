@@ -148,6 +148,40 @@ pub fn create_goal(
     })
 }
 
+pub fn get_goal(conn: &Connection, id: &str) -> Result<Option<Goal>, String> {
+    conn.query_row(
+        "SELECT id, prompt, template_key, created_at FROM goals WHERE id = ?1",
+        [id],
+        |row| {
+            Ok(Goal {
+                id: row.get(0)?,
+                prompt: row.get(1)?,
+                template_key: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+pub fn get_plan(conn: &Connection, id: &str) -> Result<Option<Plan>, String> {
+    conn.query_row(
+        "SELECT id, goal_id, analysis_json, created_at FROM plans WHERE id = ?1",
+        [id],
+        |row| {
+            Ok(Plan {
+                id: row.get(0)?,
+                goal_id: row.get(1)?,
+                analysis_json: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
 pub fn save_plan(conn: &Connection, goal_id: &str, analysis_json: &str) -> Result<Plan, String> {
     let exists: bool = conn
         .query_row("SELECT 1 FROM goals WHERE id = ?1", [goal_id], |_| Ok(true))
@@ -316,6 +350,44 @@ pub fn get_task_run(conn: &Connection, id: &str) -> Result<Option<TaskRunWithNod
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
     Ok(Some(TaskRunWithNodes { run, nodes }))
+}
+
+pub fn get_task_node(conn: &Connection, node_id: &str) -> Result<Option<TaskNode>, String> {
+    conn.query_row(
+        "SELECT id, run_id, seq, title, agent_id, skill_ids_json, cli_engine, model,
+                reasoning_effort, depends_on_json, status, started_at, finished_at,
+                artifact_paths_json, retry_count
+         FROM task_nodes WHERE id = ?1",
+        [node_id],
+        map_node,
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+pub fn set_node_artifact_paths(
+    conn: &Connection,
+    node_id: &str,
+    artifact_paths_json: &str,
+) -> Result<TaskNode, String> {
+    conn.execute(
+        "UPDATE task_nodes SET artifact_paths_json = ?1 WHERE id = ?2",
+        params![artifact_paths_json, node_id],
+    )
+    .map_err(|e| e.to_string())?;
+    get_task_node(conn, node_id)?
+        .ok_or_else(|| format!("node not found: {node_id}"))
+}
+
+pub fn increment_node_retry(conn: &Connection, node_id: &str) -> Result<TaskNode, String> {
+    conn.execute(
+        "UPDATE task_nodes SET retry_count = retry_count + 1,
+         status = 'pending', started_at = NULL, finished_at = NULL WHERE id = ?1",
+        [node_id],
+    )
+    .map_err(|e| e.to_string())?;
+    get_task_node(conn, node_id)?
+        .ok_or_else(|| format!("node not found: {node_id}"))
 }
 
 pub fn update_node_status(
