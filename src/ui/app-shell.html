@@ -322,6 +322,7 @@
                 <button class="btn btn-primary" id="sandbox-run-btn" onclick="runSandboxTest()">运行测试</button>
                 <button class="btn" id="sandbox-cancel-btn" type="button" disabled>取消</button>
               </div>
+              <div id="sandbox-engine-hint" style="display:none; font-size:11px; color:#b45309; margin:-4px 0 10px;"></div>
 
               <div class="terminal-window" style="height:140px;">
                 <div class="terminal-header">
@@ -487,18 +488,8 @@
       <input type="text" class="form-input" style="border:none; font-size:14px;" placeholder="快速搜索 Agent、Skill 或直接触发指令..." oninput="filterCmdK(this)" autofocus />
       <span class="cmd-kbd">ESC</span>
     </div>
-
-    <div style="font-size:10.5px; color:var(--fg-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;">Quick Nav</div>
-    <div style="display:flex; flex-direction:column; gap:4px;">
-      <div class="nav-item" data-cmdk-view="overview" role="button" tabindex="0">
-        <span>跳转至 全局总览</span>
-      </div>
-      <div class="nav-item" data-cmdk-view="commander" role="button" tabindex="0">
-        <span>启动 调度中枢工作台</span>
-      </div>
-      <div class="nav-item" data-cmdk-view="tasks" role="button" tabindex="0">
-        <span>查看 运行中的 DAG 任务</span>
-      </div>
+    <div id="cmdk-results" style="max-height:360px; overflow-y:auto;">
+      <div style="font-size:12px; color:var(--fg-muted); padding:8px 0;">加载指令…</div>
     </div>
   </div>
 </div>

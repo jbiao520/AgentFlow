@@ -9,13 +9,26 @@ import {
 } from "../../lib/api/orchestrate";
 import { dispatchPlan, startRun } from "../../lib/api/tasks";
 import { showView } from "../router";
-import { showToast } from "../toast";
+import { formatActionableError, showToast } from "../toast";
 
 export type WorkbenchState = {
   result: OrchestrateResult | null;
 };
 
 const state: WorkbenchState = { result: null };
+
+function setDispatchEnabled(enabled: boolean, reason?: string): void {
+  const btn = document.getElementById(
+    "dispatch-plan-btn",
+  ) as HTMLButtonElement | null;
+  if (!btn) return;
+  btn.disabled = !enabled;
+  btn.title = enabled
+    ? "确认并分发当前 Plan"
+    : reason || "没有可分发的有效 Plan — 请先 Orchestrate";
+  btn.style.opacity = enabled ? "1" : "0.55";
+  btn.style.cursor = enabled ? "pointer" : "not-allowed";
+}
 
 export function getLastOrchestrateResult(): OrchestrateResult | null {
   return state.result;
@@ -38,14 +51,18 @@ function agentColor(name: string): string {
 
 async function dispatchCurrentPlan(): Promise<void> {
   const planId = state.result?.plan_row?.id;
-  if (!planId) {
-    showToast("没有可分发的 Plan — 请先 Orchestrate");
+  const planOk = !!(state.result?.ok && state.result?.plan && planId);
+  if (!planOk || !planId) {
+    showToast("没有可分发的 Plan — 请先 Orchestrate", { kind: "error" });
+    setDispatchEnabled(false);
     return;
   }
   try {
     const dispatched = await dispatchPlan(planId);
     await startRun(dispatched.run.id);
-    showToast(`已分发 ${dispatched.nodes.length} 个节点，开始执行`);
+    showToast(`已分发 ${dispatched.nodes.length} 个节点，开始执行`, {
+      kind: "success",
+    });
     showView("tasks");
     window.dispatchEvent(
       new CustomEvent("agentmind:run-started", {
@@ -53,7 +70,8 @@ async function dispatchCurrentPlan(): Promise<void> {
       }),
     );
   } catch (e) {
-    showToast(`分发失败: ${e instanceof Error ? e.message : String(e)}`);
+    const raw = e instanceof Error ? e.message : String(e);
+    showToast(`分发失败: ${formatActionableError(raw)}`, { kind: "error" });
   }
 }
 
@@ -154,7 +172,16 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
   `;
 
   root.style.display = "";
+  const canDispatch = plan.subtasks.length > 0;
+  setDispatchEnabled(
+    canDispatch,
+    canDispatch ? undefined : "Plan 无子任务，无法 Dispatch",
+  );
   document.getElementById("dispatch-plan-btn")?.addEventListener("click", () => {
+    if (!canDispatch) {
+      showToast("Plan 无效：至少需要一个子任务", { kind: "error" });
+      return;
+    }
     void dispatchCurrentPlan();
   });
 }
@@ -162,23 +189,27 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
 export function renderOrchestrateError(error: string, raw: string | null): void {
   const root = document.getElementById("orch-results");
   if (!root) return;
+  const actionable = formatActionableError(error);
   const rawBlock = raw
     ? `<pre style="margin-top:10px; max-height:220px; overflow:auto; font-size:11px; background:#0f172a; color:#e2e8f0; padding:10px; border-radius:6px; white-space:pre-wrap;">${escapeHtml(raw)}</pre>`
     : "";
   root.innerHTML = `
     <div class="panel-title-bar">
       <div class="panel-title">调度拆解失败</div>
+      <button class="btn btn-secondary btn-sm" id="dispatch-plan-btn" disabled title="没有可分发的有效 Plan">Dispatch 不可用</button>
     </div>
     <div class="orch-step-card">
       <div class="step-number">!</div>
       <div class="step-content">
         <div class="step-title" style="color:#dc2626;">无法生成可分发的 Plan</div>
-        <p style="font-size:12px; color:var(--fg-secondary); margin-top:6px;">${escapeHtml(error)}</p>
+        <p style="font-size:12px; color:var(--fg-secondary); margin-top:6px;">${escapeHtml(actionable)}</p>
+        <p style="font-size:11px; color:var(--fg-muted); margin-top:8px;">可尝试：安装/刷新 CLI · 修正 JSON 夹具 · 确认已注册 Agent 名称匹配。</p>
         ${rawBlock}
       </div>
     </div>
   `;
   root.style.display = "";
+  setDispatchEnabled(false);
 }
 
 async function runOrchestrate(): Promise<void> {
@@ -212,18 +243,22 @@ async function runOrchestrate(): Promise<void> {
         result.error || "unknown orchestrate error",
         result.raw_output,
       );
-      showToast("调度拆解失败 — 查看原始输出");
+      showToast(
+        formatActionableError(result.error || "调度拆解失败 — 查看原始输出"),
+        { kind: "error" },
+      );
       return;
     }
     renderPlanWorkbench(result.plan, result.warnings || []);
     showToast(
       `调度拆解完成！包含 ${result.plan.subtasks.length} 个子任务与路由矩阵`,
+      { kind: "success" },
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     state.result = null;
     renderOrchestrateError(msg, null);
-    showToast(`调度失败: ${msg}`);
+    showToast(`调度失败: ${formatActionableError(msg)}`, { kind: "error" });
   } finally {
     if (btn) {
       btn.innerHTML = "启动智能调度拆解 (Orchestrate)";

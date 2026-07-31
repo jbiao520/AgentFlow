@@ -54,6 +54,7 @@ export async function refreshCliWidget(forceProbe = false): Promise<void> {
       ? await probeCliEngines()
       : await listCliEngineStatus();
     renderStatuses(statuses);
+    void import("./agents/sandbox").then((m) => m.refreshSandboxAvailability());
   } catch (err) {
     console.warn("CLI widget refresh failed", err);
     const activeEl = document.getElementById("cli-active-count");

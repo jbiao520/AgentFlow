@@ -20,7 +20,7 @@ All executable plans for v1.0. Each `*-PLAN.md` is a prompt for Claude to execut
 | 5 | 05-02 Dispatch + DAG runner | [05-02-PLAN.md](phases/05-orchestrator/05-02-PLAN.md) | Done |
 | 5 | 05-03 Task center + retry | [05-03-PLAN.md](phases/05-orchestrator/05-03-PLAN.md) | Done |
 | 6 Overview & Polish | 06-01 Overview live data | [06-01-PLAN.md](phases/06-overview-polish/06-01-PLAN.md) | Done |
-| 6 | 06-02 Cmd+K + empty/error | [06-02-PLAN.md](phases/06-overview-polish/06-02-PLAN.md) | Pending |
+| 6 | 06-02 Cmd+K + empty/error | [06-02-PLAN.md](phases/06-overview-polish/06-02-PLAN.md) | Done |
 | 6 | 06-03 Build + acceptance | [06-03-PLAN.md](phases/06-overview-polish/06-03-PLAN.md) | Pending |
 
-**Next to execute:** `06-02-PLAN.md`
+**Next to execute:** `06-03-PLAN.md`

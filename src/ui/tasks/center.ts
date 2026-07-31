@@ -83,8 +83,15 @@ function renderHistory(): void {
   if (count) count.textContent = `共 ${state.runs.length} 个`;
   if (!list) return;
   if (state.runs.length === 0) {
-    list.innerHTML =
-      '<div style="padding:12px; font-size:12px; color:var(--fg-muted);">暂无任务运行 — 从调度中枢 Dispatch</div>';
+    list.innerHTML = `
+      <div style="padding:16px 12px; font-size:12px; color:var(--fg-muted); text-align:center;">
+        <div style="font-weight:600; color:var(--fg-primary); margin-bottom:6px;">暂无任务运行</div>
+        <div style="margin-bottom:10px;">从调度中枢 Orchestrate → Dispatch 后，历史会出现在这里。</div>
+        <button type="button" class="btn btn-secondary btn-sm" id="tasks-empty-cta">打开调度中枢</button>
+      </div>`;
+    list.querySelector("#tasks-empty-cta")?.addEventListener("click", () => {
+      void import("../router").then((m) => m.showView("commander"));
+    });
     return;
   }
   list.innerHTML = state.runs

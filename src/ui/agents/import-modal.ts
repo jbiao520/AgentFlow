@@ -1,6 +1,6 @@
 import { importAgent } from "../../lib/api/agents";
 import { closeImportModal } from "../modals";
-import { showToast } from "../toast";
+import { formatActionableError, showToast } from "../toast";
 import { refreshAgentMatrix } from "./matrix";
 
 function field<T extends HTMLElement>(id: string): T | null {
@@ -49,7 +49,11 @@ export async function submitImportModal(): Promise<void> {
     const how = result.cloned ? "已克隆并注册" : "已绑定本地路径";
     showToast(`${how}: ${result.agent.name}`);
   } catch (e) {
-    showToast(`导入失败: ${e instanceof Error ? e.message : String(e)}`);
+    const raw = e instanceof Error ? e.message : String(e);
+    showToast(`导入失败: ${formatActionableError(raw)}`, {
+      kind: "error",
+      durationMs: 5000,
+    });
   } finally {
     submitBtn?.removeAttribute("disabled");
   }

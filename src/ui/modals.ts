@@ -1,3 +1,11 @@
+/**
+ * Modal overlays: Cmd+K, import agent, skill detail.
+ */
+import {
+  closeCmdK,
+  filterCmdKList,
+  openCmdK,
+} from "./cmdk";
 import { submitImportModal as runImportSubmit } from "./agents/import-modal";
 import { showView } from "./router";
 
@@ -8,32 +16,15 @@ function isOverlayClick(event: Event | undefined, overlayId: string): boolean {
 }
 
 export function openCmdKModal(): void {
-  const modal = document.getElementById("cmdk-modal");
-  if (!modal) return;
-  modal.classList.add("active");
-  modal.setAttribute("aria-hidden", "false");
-  const input = modal.querySelector("input");
-  if (input instanceof HTMLInputElement) {
-    input.value = "";
-    input.focus();
-  }
+  void openCmdK();
 }
 
 export function closeCmdKModal(event?: Event): void {
-  if (event && !isOverlayClick(event, "cmdk-modal")) return;
-  const modal = document.getElementById("cmdk-modal");
-  if (!modal) return;
-  modal.classList.remove("active");
-  modal.setAttribute("aria-hidden", "true");
+  closeCmdK(event);
 }
 
 export function filterCmdK(inputEl: HTMLInputElement): void {
-  const query = inputEl.value.toLowerCase().trim();
-  document.querySelectorAll("#cmdk-modal .nav-item").forEach((item) => {
-    const text = (item.textContent || "").toLowerCase();
-    (item as HTMLElement).style.display =
-      !query || text.includes(query) ? "flex" : "none";
-  });
+  filterCmdKList(inputEl);
 }
 
 export function openImportModal(): void {
@@ -108,10 +99,16 @@ export function bindModals(): void {
     .querySelector("#skill-modal .modal-card")
     ?.addEventListener("click", (e) => e.stopPropagation());
 
+  // Legacy static nav items (if present) — primary list is rendered by cmdk.ts
   document.querySelectorAll("#cmdk-modal .nav-item[data-cmdk-view]").forEach((item) => {
     item.addEventListener("click", () => {
       const view = item.getAttribute("data-cmdk-view");
-      if (view === "overview" || view === "commander" || view === "tasks") {
+      if (
+        view === "overview" ||
+        view === "agents" ||
+        view === "commander" ||
+        view === "tasks"
+      ) {
         showView(view);
         closeCmdKModal();
       }

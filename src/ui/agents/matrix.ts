@@ -137,19 +137,29 @@ export async function refreshAgentMatrix(): Promise<void> {
 
   const cachedAgents = getCachedAgents();
 
+  if (cachedAgents.length === 0) {
+    grid.innerHTML = `
+      <div id="agent-empty-state" class="empty-state" style="display:flex; flex-direction:column; align-items:center; gap:10px; padding:28px 16px;">
+        <div style="font-weight:600; font-size:14px; color:var(--fg-primary);">还没有注册任何 Agent</div>
+        <div style="font-size:12px; color:var(--fg-muted); text-align:center; max-width:360px;">
+          导入本地 Workspace 或 Git URL，系统会扫描 <code>.agent/skills/</code> 并写入 SQLite。
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="agent-empty-import-cta">导入 / 新建 Agent</button>
+      </div>`;
+    document
+      .getElementById("agent-empty-import-cta")
+      ?.addEventListener("click", () => {
+        void import("../modals").then((m) => m.openImportModal());
+      });
+    return;
+  }
+
   const emptyHtml = `
     <div id="agent-empty-state" class="empty-state" style="display:none;">
       <div style="font-weight:600; font-size:14px; margin-bottom:4px; color:var(--fg-primary);">未找到匹配的 Agent 工作区</div>
       <div style="font-size:12px; color:var(--fg-muted);">请尝试调整搜索关键词或重置筛选条件，或通过右上角按钮新建导入。</div>
     </div>
   `;
-
-  if (cachedAgents.length === 0) {
-    grid.innerHTML = emptyHtml;
-    const emptyState = document.getElementById("agent-empty-state");
-    if (emptyState) emptyState.style.display = "flex";
-    return;
-  }
 
   grid.innerHTML = cachedAgents.map(renderCard).join("\n") + emptyHtml;
   bindCardClicks(grid);

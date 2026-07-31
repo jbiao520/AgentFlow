@@ -7,7 +7,7 @@ import {
 } from "../../lib/api/agents";
 import { getSelectedAgentId } from "./state";
 import { openSkillDetailModal } from "../modals";
-import { showToast } from "../toast";
+import { formatActionableError, showToast } from "../toast";
 
 function escapeHtml(s: string): string {
   return s
@@ -114,8 +114,17 @@ export async function refreshAgentSkills(agentId?: string | null): Promise<void>
   try {
     const skills = await listSkills(id);
     if (skills.length === 0) {
-      list.innerHTML =
-        '<div style="font-size:12px; color:var(--fg-muted); padding:8px 0;">暂无 Skill。点击「同步 Workspace Skill」扫描 <code>.agent/skills/</code>。</div>';
+      list.innerHTML = `
+        <div style="font-size:12px; color:var(--fg-muted); padding:12px 0; text-align:center;">
+          <div style="font-weight:600; color:var(--fg-primary); margin-bottom:6px;">暂无 Skill</div>
+          <div style="margin-bottom:10px;">在 Workspace 的 <code>.agent/skills/</code> 放置 Markdown，然后同步。</div>
+          <button type="button" class="btn btn-secondary btn-sm" id="skills-empty-sync-cta">同步 Workspace Skill</button>
+        </div>`;
+      list
+        .querySelector("#skills-empty-sync-cta")
+        ?.addEventListener("click", () => {
+          void syncSelectedAgentSkills();
+        });
       return;
     }
     list.innerHTML = skills.map(renderSkillRow).join("\n");
@@ -140,7 +149,10 @@ export async function syncSelectedAgentSkills(): Promise<void> {
       `Skill 同步完成：+${result.added} / ~${result.updated} / -${result.removed}`,
     );
   } catch (e) {
-    showToast(`同步失败: ${e instanceof Error ? e.message : String(e)}`);
+    showToast(
+      `同步失败: ${formatActionableError(e instanceof Error ? e.message : String(e))}`,
+      { kind: "error" },
+    );
   }
 }
 
