@@ -1,0 +1,21 @@
+# AgentMind
+
+macOS app — personal AI agent brain & execution system (Tauri + Web UI).
+
+## Ignore
+.DS_Store
+.idea/
+*.log
+node_modules/
+dist/
+src-tauri/target/
+.vite/
+*.local
+.env
+.env.*
+!.env.example
+
+# App data / local clones during dev
+.workspaces/
+data/*.db
+data/*.db-*

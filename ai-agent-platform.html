@@ -1,0 +1,2356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Agent 管理平台 - 个人 AI 大脑与综合执行系统</title>
+  <style>
+    /* ==========================================================================
+       macOS Light Native Theme & Refined System Tokens
+       ========================================================================== */
+    :root {
+      --bg-app: #f6f8fa;
+      --bg-sidebar: #ebedf0;
+      --bg-card: #ffffff;
+      --bg-card-hover: #f8fafc;
+      --bg-elevated: #ffffff;
+      --bg-input: #ffffff;
+      --border-color: rgba(0, 0, 0, 0.08);
+      --border-hover: rgba(0, 0, 0, 0.18);
+      --border-focus: rgba(37, 99, 235, 0.5);
+      
+      --fg-primary: #0f172a;
+      --fg-secondary: #475569;
+      --fg-muted: #64748b;
+      
+      --accent-primary: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-cyan: #0284c7;
+      --accent-emerald: #059669;
+      --accent-amber: #d97706;
+      --accent-rose: #e11d48;
+      --accent-purple: #7c3aed;
+      
+      --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif;
+      --font-mono: "SF Mono", Monaco, Menlo, Consolas, monospace;
+      
+      --radius-sm: 5px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+      
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.07);
+      --shadow-lg: 0 12px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-app);
+      color: var(--fg-primary);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ==========================================================================
+       macOS App Container & Titlebar
+       ========================================================================== */
+    .app-window {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-app);
+      position: relative;
+    }
+
+    .titlebar {
+      height: 40px;
+      background: var(--bg-sidebar);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      -webkit-app-region: drag;
+      flex-shrink: 0;
+    }
+
+    .traffic-lights {
+      display: flex;
+      gap: 8px;
+    }
+
+    .traffic-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .traffic-close { background-color: #ff5f56; }
+    .traffic-min { background-color: #ffbd2e; }
+    .traffic-max { background-color: #27c93f; }
+
+    .titlebar-center {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fg-secondary);
+    }
+
+    .titlebar-badge {
+      background: rgba(37, 99, 235, 0.1);
+      color: #2563eb;
+      border: 1px solid rgba(37, 99, 235, 0.2);
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+    }
+
+    .titlebar-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .cmd-k-trigger {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      color: var(--fg-muted);
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+      transition: all 0.15s ease;
+    }
+    .cmd-k-trigger:hover {
+      border-color: var(--border-hover);
+      color: var(--fg-secondary);
+    }
+    .cmd-kbd {
+      background: var(--bg-sidebar);
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      border: 1px solid var(--border-color);
+      color: var(--fg-secondary);
+    }
+
+    .main-shell {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ==========================================================================
+       Sidebar Navigation
+       ========================================================================== */
+    .sidebar {
+      width: 230px;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 14px 10px;
+      flex-shrink: 0;
+    }
+
+    .nav-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--fg-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin: 14px 8px 6px 8px;
+    }
+
+    .nav-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 10px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--fg-secondary);
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+
+    .nav-item:hover {
+      background: rgba(0, 0, 0, 0.04);
+      color: var(--fg-primary);
+    }
+
+    .nav-item.active {
+      background: var(--accent-primary);
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .nav-item-left {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .nav-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      opacity: 0.85;
+    }
+    .nav-item.active .nav-icon {
+      opacity: 1;
+    }
+
+    .nav-count {
+      background: rgba(0, 0, 0, 0.06);
+      padding: 2px 6px;
+      border-radius: 8px;
+      font-size: 11px;
+      color: var(--fg-secondary);
+      font-family: var(--font-mono);
+    }
+    .nav-item.active .nav-count {
+      background: rgba(255, 255, 255, 0.25);
+      color: #fff;
+    }
+
+    /* Sidebar Footer CLI Engine Widget */
+    .cli-engine-widget {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .cli-widget-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--fg-muted);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+
+    .cli-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+    .cli-item:last-child { margin-bottom: 0; }
+
+    .cli-name {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--fg-secondary);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-emerald);
+      flex-shrink: 0;
+      display: inline-block;
+    }
+    .status-dot.working {
+      background: var(--accent-amber);
+      box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.2);
+      animation: pulse 1.8s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.2); opacity: 0.7; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* ==========================================================================
+       Content Workspace Pane
+       ========================================================================== */
+    .content-area {
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg-app);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .view-pane {
+      display: none;
+      padding: 24px;
+      animation: fadeIn 0.15s ease-in-out;
+    }
+    .view-pane.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(3px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .page-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .page-title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--fg-primary);
+    }
+
+    .page-desc {
+      font-size: 13px;
+      color: var(--fg-muted);
+      margin-top: 4px;
+      line-height: 1.4;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 13px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.12s ease;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-primary {
+      background: var(--accent-primary);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      border-color: var(--border-color);
+      color: var(--fg-primary);
+    }
+    .btn-secondary:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-hover);
+    }
+
+    .btn-sm {
+      padding: 4px 9px;
+      font-size: 12px;
+      border-radius: var(--radius-sm);
+    }
+
+    /* Sleek Segmented Stats Panel */
+    .stats-bar {
+      display: flex;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      margin-bottom: 20px;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .stat-item {
+      flex: 1;
+      padding: 14px 18px;
+      border-right: 1px solid var(--border-color);
+    }
+    .stat-item:last-child {
+      border-right: none;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: var(--fg-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .stat-value {
+      font-size: 22px;
+      font-weight: 700;
+      margin: 6px 0 2px 0;
+      letter-spacing: -0.03em;
+      color: var(--fg-primary);
+    }
+
+    .stat-sub {
+      font-size: 11px;
+      color: var(--fg-secondary);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Section Cards */
+    .card-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .panel-title-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .panel-title {
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--fg-primary);
+    }
+
+    /* ==========================================================================
+       VIEW 1: OVERVIEW - Global Collaboration Topology SVG Canvas
+       ========================================================================== */
+    .topology-container {
+      background: #ffffff;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      height: 290px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .topology-canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    .topology-node {
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .topology-node:hover rect {
+      stroke: var(--accent-hover);
+      stroke-width: 1.8px;
+      filter: drop-shadow(0 2px 6px rgba(37,99,235,0.15));
+    }
+
+    @keyframes dashFlow {
+      to { stroke-dashoffset: -16; }
+    }
+    .flowing-edge {
+      animation: dashFlow 1s linear infinite;
+    }
+
+    /* ==========================================================================
+       VIEW 2: AGENT MATRIX & CARDS
+       ========================================================================== */
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .agent-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      position: relative;
+      box-shadow: var(--shadow-sm);
+    }
+    .agent-card:hover {
+      border-color: var(--border-hover);
+      background: var(--bg-card-hover);
+      box-shadow: var(--shadow-md);
+    }
+
+    .agent-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .agent-avatar-badge {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-md);
+      display: grid;
+      place-items: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      background: #f1f5f9;
+      border: 1px solid var(--border-color);
+      color: var(--fg-primary);
+    }
+
+    .agent-status-badge {
+      padding: 2px 7px;
+      border-radius: 10px;
+      font-size: 10.5px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .badge-working {
+      background: rgba(217, 119, 6, 0.1);
+      color: #b45309;
+      border: 1px solid rgba(217, 119, 6, 0.25);
+    }
+    .badge-idle {
+      background: rgba(5, 150, 105, 0.1);
+      color: #047857;
+      border: 1px solid rgba(5, 150, 105, 0.25);
+    }
+
+    .agent-name {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 3px;
+      font-family: var(--font-mono);
+      color: var(--fg-primary);
+    }
+
+    .agent-repo {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--fg-muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+
+    .agent-skills-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 14px;
+    }
+
+    .skill-tag {
+      background: #f1f5f9;
+      border: 1px solid var(--border-color);
+      padding: 2px 7px;
+      border-radius: var(--radius-sm);
+      font-size: 10.5px;
+      font-family: var(--font-mono);
+      color: var(--fg-secondary);
+    }
+
+    .agent-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid var(--border-color);
+      padding-top: 10px;
+      font-size: 11px;
+      color: var(--fg-muted);
+    }
+
+    .agent-model-pill {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      background: rgba(124, 58, 237, 0.08);
+      color: #6d28d9;
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(124, 58, 237, 0.2);
+    }
+
+    /* ==========================================================================
+       VIEW 3: AGENT DETAIL
+       ========================================================================== */
+    .agent-detail-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 18px;
+    }
+
+    .detail-sidebar-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-label {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--fg-secondary);
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .form-select, .form-input, .form-textarea {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      color: var(--fg-primary);
+      padding: 7px 10px;
+      border-radius: var(--radius-md);
+      font-size: 12.5px;
+      font-family: var(--font-sans);
+      outline: none;
+      transition: border-color 0.12s;
+    }
+    .form-select:focus, .form-input:focus, .form-textarea:focus {
+      border-color: var(--accent-primary);
+    }
+
+    .range-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .range-input {
+      flex: 1;
+      accent-color: var(--accent-primary);
+      cursor: pointer;
+    }
+    .range-val {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--fg-secondary);
+      width: 32px;
+      text-align: right;
+    }
+
+    .reasoning-pills {
+      display: flex;
+      gap: 6px;
+    }
+
+    .reasoning-pill {
+      flex: 1;
+      text-align: center;
+      padding: 5px 0;
+      background: #f1f5f9;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--fg-muted);
+      transition: all 0.12s;
+    }
+    .reasoning-pill.active {
+      background: rgba(37, 99, 235, 0.12);
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
+
+    /* Skills List Table */
+    .skill-item-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      margin-bottom: 6px;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .skill-item-row:hover {
+      background: var(--bg-card-hover);
+    }
+
+    .skill-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .skill-title {
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      color: var(--fg-primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .skill-desc {
+      font-size: 11px;
+      color: var(--fg-muted);
+    }
+
+    /* Clean Switch Toggle */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 34px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: #cbd5e1;
+      transition: .15s;
+      border-radius: 18px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 12px;
+      width: 12px;
+      left: 3px;
+      bottom: 3px;
+      background-color: #ffffff;
+      transition: .15s;
+      border-radius: 50%;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+    input:checked + .slider { background-color: var(--accent-primary); }
+    input:checked + .slider:before { transform: translateX(16px); }
+
+    /* ==========================================================================
+       VIEW 4: DISPATCH HUB WORKBENCH
+       ========================================================================== */
+    .commander-prompt-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-xl);
+      padding: 18px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .commander-input {
+      width: 100%;
+      height: 80px;
+      background: transparent;
+      border: none;
+      color: var(--fg-primary);
+      font-size: 14px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      font-family: var(--font-sans);
+    }
+
+    .commander-bar-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid var(--border-color);
+      padding-top: 12px;
+      margin-top: 8px;
+    }
+
+    .template-chips {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .chip-item {
+      background: #f1f5f9;
+      border: 1px solid var(--border-color);
+      padding: 3px 9px;
+      border-radius: 10px;
+      font-size: 11px;
+      color: var(--fg-secondary);
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .chip-item:hover {
+      border-color: var(--border-hover);
+      color: var(--fg-primary);
+      background: #e2e8f0;
+    }
+
+    .orchestration-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .orch-step-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 14px 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .step-number {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: rgba(37, 99, 235, 0.12);
+      color: #2563eb;
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      flex-shrink: 0;
+    }
+
+    .step-content {
+      flex: 1;
+    }
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+
+    .step-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--fg-primary);
+    }
+
+    /* ==========================================================================
+       VIEW 5: TASK CENTER & DAG DETAIL
+       ========================================================================== */
+    .task-split-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 18px;
+    }
+
+    .task-list-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .task-list-header {
+      padding: 14px;
+      border-bottom: 1px solid var(--border-color);
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--fg-primary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .task-item-card {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border-color);
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .task-item-card:hover, .task-item-card.active {
+      background: var(--bg-card-hover);
+    }
+    .task-item-card.active {
+      border-left: 3px solid var(--accent-primary);
+    }
+
+    .task-item-title {
+      font-size: 12.5px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: var(--fg-primary);
+    }
+
+    .task-item-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--fg-muted);
+      font-family: var(--font-mono);
+    }
+
+    /* Terminal Window - Crisp Dark Slate Frame */
+    .terminal-window {
+      background: #0f172a;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      border-radius: var(--radius-lg);
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      display: flex;
+      flex-direction: column;
+      height: 240px;
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+    }
+
+    .terminal-header {
+      background: #1e293b;
+      padding: 7px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #94a3b8;
+      font-size: 11px;
+    }
+
+    .terminal-tabs {
+      display: flex;
+      gap: 6px;
+    }
+
+    .term-tab {
+      background: rgba(255,255,255,0.06);
+      color: #94a3b8;
+      padding: 2px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 10px;
+    }
+    .term-tab.active {
+      background: rgba(37,99,235,0.3);
+      color: #38bdf8;
+      border: 1px solid rgba(56,189,248,0.3);
+    }
+
+    .terminal-body {
+      padding: 10px 12px;
+      overflow-y: auto;
+      flex: 1;
+      line-height: 1.6;
+      color: #f1f5f9;
+    }
+
+    .log-line { margin-bottom: 2px; }
+    .log-time { color: #64748b; margin-right: 8px; }
+    .log-agent { color: #38bdf8; font-weight: 600; margin-right: 8px; }
+    .log-ok { color: #4ade80; }
+    .log-exec { color: #c084fc; }
+    .log-warn { color: #facc15; }
+
+    .diff-box {
+      background: #0f172a;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      border-radius: var(--radius-md);
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      padding: 12px;
+      max-height: 190px;
+      overflow-y: auto;
+      line-height: 1.5;
+    }
+
+    /* Modal Overlays */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.35);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-xl);
+      width: 520px;
+      padding: 20px;
+      box-shadow: var(--shadow-lg);
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent-primary) !important;
+      outline-offset: 2px !important;
+    }
+
+    .empty-state {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      background: var(--bg-card);
+      border: 1px dashed var(--border-color);
+      border-radius: var(--radius-lg);
+      text-align: center;
+    }
+
+    /* Toast Notification Container */
+    #toast-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast-msg {
+      background: #0f172a;
+      color: #f1f5f9;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 10px 16px;
+      border-radius: var(--radius-md);
+      font-size: 12.5px;
+      font-weight: 500;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: toastIn 0.2s ease-out;
+    }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, ::before, ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    @media (max-width: 1100px) {
+      .stats-bar {
+        flex-direction: column;
+      }
+      .stat-item {
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .stat-item:last-child {
+        border-bottom: none;
+      }
+      .agent-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .agent-detail-layout {
+        grid-template-columns: 1fr;
+      }
+      .task-split-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .main-shell {
+        flex-direction: column;
+      }
+      .sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        padding: 10px;
+      }
+      .nav-list {
+        flex-direction: row;
+        overflow-x: auto;
+      }
+      .agent-grid {
+        grid-template-columns: 1fr;
+      }
+      .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .modal-card {
+        width: 92vw;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-window" data-od-id="app-window">
+  <!-- macOS Titlebar -->
+  <div class="titlebar" data-od-id="app-titlebar">
+    <div class="traffic-lights">
+      <div class="traffic-dot traffic-close" onclick="showToast('macOS Window Minimalized')"></div>
+      <div class="traffic-dot traffic-min" onclick="showToast('macOS Window Standard Mode')"></div>
+      <div class="traffic-dot traffic-max" onclick="showToast('macOS Fullscreen Mode')"></div>
+    </div>
+    
+    <div class="titlebar-center">
+      <span>AI Agent Platform</span>
+      <span class="titlebar-badge">v1.2 macOS</span>
+    </div>
+
+    <div class="titlebar-actions">
+      <div class="cmd-k-trigger" onclick="openCmdKModal()" data-od-id="cmd-k-btn">
+        <span>搜索 Agent 或快捷触发</span>
+        <span class="cmd-kbd">⌘K</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Work Shell -->
+  <div class="main-shell">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar" data-od-id="app-sidebar">
+      <div>
+        <div class="nav-section-title">Views</div>
+        <ul class="nav-list">
+          <li class="nav-item active" onclick="switchView('overview', this)" data-od-id="nav-overview">
+            <div class="nav-item-left">
+              <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+              </span>
+              <span>全局总览</span>
+            </div>
+            <span class="nav-count">6</span>
+          </li>
+          <li class="nav-item" onclick="switchView('agents', this)" data-od-id="nav-agents">
+            <div class="nav-item-left">
+              <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M4 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7z"/><circle cx="9" cy="15" r="1"/><circle cx="15" cy="15" r="1"/></svg>
+              </span>
+              <span>Agent 矩阵</span>
+            </div>
+            <span class="nav-count">6</span>
+          </li>
+          <li class="nav-item" onclick="switchView('agent-detail', this)" data-od-id="nav-agent-detail">
+            <div class="nav-item-left">
+              <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </span>
+              <span>Agent 详情配置</span>
+            </div>
+          </li>
+          <li class="nav-item" onclick="switchView('commander', this)" data-od-id="nav-commander">
+            <div class="nav-item-left">
+              <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3z"/></svg>
+              </span>
+              <span>调度中枢</span>
+            </div>
+            <span class="nav-count" style="background: rgba(37,99,235,0.12); color:#2563eb;">Hub</span>
+          </li>
+          <li class="nav-item" onclick="switchView('tasks', this)" data-od-id="nav-tasks">
+            <div class="nav-item-left">
+              <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              </span>
+              <span>任务中心 & DAG</span>
+            </div>
+            <span class="nav-count" style="background: rgba(217,119,6,0.12); color:#b45309;">2 运行</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- CLI Engine Status Widget -->
+      <div class="cli-engine-widget" data-od-id="cli-widget">
+        <div class="cli-widget-header">
+          <span>CLI Engines & Drivers</span>
+          <span style="color: var(--accent-emerald);">3/3 Active</span>
+        </div>
+        <div class="cli-item">
+          <div class="cli-name"><div class="status-dot working"></div>cursor-agent (playwright)</div>
+          <span style="font-size:10px; color:var(--fg-muted); font-family:var(--font-mono);">headless</span>
+        </div>
+        <div class="cli-item">
+          <div class="cli-name"><div class="status-dot"></div>codex cli (data/ocr)</div>
+          <span style="font-size:10px; color:var(--fg-muted); font-family:var(--font-mono);">high reasoning</span>
+        </div>
+        <div class="cli-item">
+          <div class="cli-name"><div class="status-dot"></div>opencode cli (api/bot)</div>
+          <span style="font-size:10px; color:var(--fg-muted); font-family:var(--font-mono);">v2.4.1</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Content Area Pane -->
+    <main class="content-area">
+      
+      <!-- ===================================================================
+           VIEW 1: OVERVIEW
+           =================================================================== -->
+      <div id="view-overview" class="view-pane active" data-od-id="view-overview">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">全局总览</h1>
+            <p class="page-desc">掌控个人 AI 执行系统的 Agent 指标、协同拓扑与自动化调度队列。</p>
+          </div>
+          <button class="btn btn-primary" onclick="switchView('commander', document.querySelector('[data-od-id=nav-commander]'))" data-od-id="overview-new-task-btn">
+            <span>发起调度任务</span>
+          </button>
+        </div>
+
+        <!-- Sleek Segmented Stats Panel -->
+        <div class="stats-bar">
+          <div class="stat-item">
+            <div class="stat-label">注册 Agent 矩阵</div>
+            <div class="stat-value">6</div>
+            <div class="stat-sub">
+              <span class="status-dot" style="background:var(--accent-emerald);"></span> 100% 连通健康
+            </div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">运行中自动化任务</div>
+            <div class="stat-value" style="color: var(--accent-amber);">2</div>
+            <div class="stat-sub">Playwright + Codex OCR</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">今日完成调度</div>
+            <div class="stat-value">34</div>
+            <div class="stat-sub" style="color:var(--accent-emerald);">成功率 97.1%</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Token & Reasoning 消耗</div>
+            <div class="stat-value">1.28M</div>
+            <div class="stat-sub" style="color:#7c3aed;">High Reasoning Effort</div>
+          </div>
+        </div>
+
+        <!-- Global Collaboration Topology Graph Card -->
+        <div class="card-panel" data-od-id="panel-topology">
+          <div class="panel-title-bar">
+            <div class="panel-title">
+              <span>Agent 协同拓扑图</span>
+            </div>
+            <span style="font-size:11px; color:var(--fg-muted); font-family:var(--font-mono);">网页抓取 / 情报提炼 / 巡检测试 / 定时推送</span>
+          </div>
+
+          <div class="topology-container">
+            <svg class="topology-canvas" viewBox="0 0 900 250">
+              <defs>
+                <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+                  <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgba(0,0,0,0.035)" stroke-width="1"/>
+                </pattern>
+                <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+                </marker>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#grid)" />
+
+              <!-- Dependency Connecting Lines -->
+              <path d="M 170 125 C 240 125, 240 60, 320 60" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="4" class="flowing-edge" marker-end="url(#arrow)"/>
+              <path d="M 170 125 C 240 125, 240 125, 320 125" fill="none" stroke="#2563eb" stroke-width="1.5" class="flowing-edge" marker-end="url(#arrow)"/>
+              <path d="M 170 125 C 240 125, 240 190, 320 190" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="4" marker-end="url(#arrow)"/>
+              
+              <path d="M 470 60 C 550 60, 550 92, 630 92" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#arrow)"/>
+              <path d="M 470 125 C 550 125, 550 92, 630 92" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+              <!-- Central Node: Dispatch Hub Agent -->
+              <g class="topology-node" transform="translate(30, 95)" onclick="switchView('commander', document.querySelector('[data-od-id=nav-commander]'))">
+                <rect width="140" height="60" rx="8" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/>
+                <text x="70" y="28" fill="#0f172a" font-size="12" font-weight="bold" font-family="var(--font-mono)" text-anchor="middle">Dispatch Hub</text>
+                <text x="70" y="44" fill="#2563eb" font-size="10" font-weight="600" text-anchor="middle">调度中枢</text>
+              </g>
+
+              <!-- Node 1: web-browser-ops -->
+              <g class="topology-node" transform="translate(320, 30)" onclick="selectAgent('web-browser-ops')">
+                <rect width="150" height="60" rx="8" fill="#ffffff" stroke="#d97706" stroke-width="1.2"/>
+                <circle cx="136" cy="12" r="3.5" fill="#d97706"/>
+                <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">web-browser-ops</text>
+                <text x="12" y="42" fill="#64748b" font-size="10">Playwright / Browser</text>
+              </g>
+
+              <!-- Node 2: research-collector -->
+              <g class="topology-node" transform="translate(320, 95)" onclick="selectAgent('research-collector')">
+                <rect width="150" height="60" rx="8" fill="#ffffff" stroke="#2563eb" stroke-width="1.2"/>
+                <circle cx="136" cy="12" r="3.5" fill="#2563eb"/>
+                <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">research-collector</text>
+                <text x="12" y="42" fill="#64748b" font-size="10">Intel & Markdown Brief</text>
+              </g>
+
+              <!-- Node 3: qa-regression-bot -->
+              <g class="topology-node" transform="translate(320, 160)" onclick="selectAgent('qa-regression-bot')">
+                <rect width="150" height="60" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+                <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">qa-regression-bot</text>
+                <text x="12" y="42" fill="#64748b" font-size="10">Site Inspector Suite</text>
+              </g>
+
+              <!-- Target Node: social-media-manager -->
+              <g class="topology-node" transform="translate(630, 62)" onclick="selectAgent('social-media-manager')">
+                <rect width="150" height="60" rx="8" fill="#ffffff" stroke="#059669" stroke-width="1.2"/>
+                <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">social-media-mgr</text>
+                <text x="12" y="42" fill="#64748b" font-size="10">Content & Publisher</text>
+              </g>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Live Running Tasks Queue Table -->
+        <div class="card-panel">
+          <div class="panel-title-bar">
+            <div class="panel-title">自动化任务队列</div>
+            <button class="btn btn-secondary btn-sm" onclick="switchView('tasks', document.querySelector('[data-od-id=nav-tasks]'))">查看任务中心 →</button>
+          </div>
+
+          <table style="width:100%; border-collapse: collapse; font-size:12.5px;">
+            <thead>
+              <tr style="text-align:left; border-bottom:1px solid var(--border-color); color:var(--fg-muted); font-size:11px; text-transform:uppercase; letter-spacing:0.05em;">
+                <th style="padding:8px 10px;">Task ID & 目标描述</th>
+                <th style="padding:8px 10px;">协同 Agent</th>
+                <th style="padding:8px 10px;">使用的 CLI 引擎</th>
+                <th style="padding:8px 10px;">执行进度</th>
+                <th style="padding:8px 10px;">耗时</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid var(--border-color); cursor:pointer;" onclick="switchView('tasks', document.querySelector('[data-od-id=nav-tasks]'))">
+                <td style="padding:10px;">
+                  <div style="font-weight:600; color:var(--fg-primary);">#2026-0801 全网竞品价格与促销动态监控</div>
+                  <div style="font-size:11px; color:var(--fg-muted);">拆解 3 个子任务 · Playwright 抓取、JSON 清洗与 Markdown 简报</div>
+                </td>
+                <td style="padding:10px;">
+                  <span class="skill-tag">web-browser-ops</span>
+                  <span class="skill-tag">research-collector</span>
+                </td>
+                <td style="padding:10px; font-family:var(--font-mono); font-size:11px; color:#7c3aed;">
+                  cursor-agent (playwright)
+                </td>
+                <td style="padding:10px;">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="flex:1; background:#e2e8f0; height:5px; border-radius:3px; overflow:hidden;">
+                      <div style="width:65%; background:var(--accent-amber); height:100%;"></div>
+                    </div>
+                    <span style="font-size:11px; color:var(--accent-amber); font-family:var(--font-mono);">65%</span>
+                  </div>
+                </td>
+                <td style="padding:10px; color:var(--fg-muted); font-family:var(--font-mono);">03m 42s</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ===================================================================
+           VIEW 2: AGENT MATRIX
+           =================================================================== -->
+      <div id="view-agents" class="view-pane" data-od-id="view-agents">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Agent 矩阵</h1>
+            <p class="page-desc">每个 Agent 绑定一个工作区 Workspace，技能从工作区内部配置自动感知。</p>
+          </div>
+          <button class="btn btn-primary" onclick="openImportModal()">
+            <span>导入/新建 Agent 工作区</span>
+          </button>
+        </div>
+
+        <!-- Filter Bar -->
+        <div style="display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap;">
+          <input type="text" id="agent-search-input" class="form-input" style="width:260px;" placeholder="搜索 Agent、工作区或 Skill..." oninput="filterAgents()" />
+          <select id="agent-status-filter" class="form-select" style="width:150px;" onchange="filterAgents()">
+            <option value="all">所有状态</option>
+            <option value="working">Working (执行中)</option>
+            <option value="idle">Idle (就绪)</option>
+          </select>
+          <select id="agent-cli-filter" class="form-select" style="width:170px;" onchange="filterAgents()">
+            <option value="all">所有 CLI 引擎</option>
+            <option value="cursor-agent">Cursor Agent (Playwright)</option>
+            <option value="codex">Codex CLI</option>
+            <option value="opencode">OpenCode CLI</option>
+          </select>
+        </div>
+
+        <!-- Agent Grid Cards -->
+        <div class="agent-grid" id="agent-grid" data-od-id="agent-grid">
+          <!-- Card 1 -->
+          <div class="agent-card" data-agent-name="web-browser-ops" data-status="working" data-cli="cursor-agent" onclick="selectAgent('web-browser-ops')" tabindex="0" role="button" aria-label="查看 Agent web-browser-ops 详情">
+            <div class="agent-card-header">
+              <div class="agent-avatar-badge">WO</div>
+              <div class="agent-status-badge badge-working">
+                <div class="status-dot working"></div>Working
+              </div>
+            </div>
+            <div class="agent-name">web-browser-ops</div>
+            <div class="agent-repo">github.com/user/web-ops-scripts</div>
+            <p style="font-size:12px; color:var(--fg-muted); margin-bottom:10px; line-height:1.4;">
+              网页自动化与 Playwright 驱动 Agent，负责网站自动签到、登录表单与跨平台页面交互。
+            </p>
+            <div class="agent-skills-tags">
+              <span class="skill-tag">playwright-crawler</span>
+              <span class="skill-tag">form-auto-fill</span>
+              <span class="skill-tag">cookie-keeper</span>
+            </div>
+            <div class="agent-footer">
+              <span>CLI: cursor-agent</span>
+              <span class="agent-model-pill">claude-3.7-sonnet</span>
+            </div>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="agent-card" data-agent-name="research-collector" data-status="working" data-cli="codex" onclick="selectAgent('research-collector')" tabindex="0" role="button" aria-label="查看 Agent research-collector 详情">
+            <div class="agent-card-header">
+              <div class="agent-avatar-badge">RC</div>
+              <div class="agent-status-badge badge-working">
+                <div class="status-dot working"></div>Working
+              </div>
+            </div>
+            <div class="agent-name">research-collector</div>
+            <div class="agent-repo">github.com/user/market-intel-hub</div>
+            <p style="font-size:12px; color:var(--fg-muted); margin-bottom:10px; line-height:1.4;">
+              全网情报采集与分析 Agent，监控竞品价格/新闻/热点，自动提炼 Markdown 简报。
+            </p>
+            <div class="agent-skills-tags">
+              <span class="skill-tag">web-search-extract</span>
+              <span class="skill-tag">llm-summarizer</span>
+              <span class="skill-tag">notion-sync</span>
+            </div>
+            <div class="agent-footer">
+              <span>CLI: codex</span>
+              <span class="agent-model-pill">sol / medium reasoning</span>
+            </div>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="agent-card" data-agent-name="qa-regression-bot" data-status="idle" data-cli="cursor-agent" onclick="selectAgent('qa-regression-bot')" tabindex="0" role="button" aria-label="查看 Agent qa-regression-bot 详情">
+            <div class="agent-card-header">
+              <div class="agent-avatar-badge">QA</div>
+              <div class="agent-status-badge badge-idle">
+                <div class="status-dot"></div>Idle
+              </div>
+            </div>
+            <div class="agent-name">qa-regression-bot</div>
+            <div class="agent-repo">github.com/user/site-inspector-suite</div>
+            <p style="font-size:12px; color:var(--fg-muted); margin-bottom:10px; line-height:1.4;">
+              自动化巡检与 UI 测试 Agent，对自营网站执行断链检测、性能与可用性测试、异常报警。
+            </p>
+            <div class="agent-skills-tags">
+              <span class="skill-tag">visual-diff-check</span>
+              <span class="skill-tag">lighthouse-audit</span>
+              <span class="skill-tag">webhook-alert</span>
+            </div>
+            <div class="agent-footer">
+              <span>CLI: cursor-agent</span>
+              <span class="agent-model-pill">fast-runner</span>
+            </div>
+          </div>
+
+          <!-- Card 4 -->
+          <div class="agent-card" data-agent-name="social-media-manager" data-status="idle" data-cli="opencode" onclick="selectAgent('social-media-manager')" tabindex="0" role="button" aria-label="查看 Agent social-media-manager 详情">
+            <div class="agent-card-header">
+              <div class="agent-avatar-badge">SM</div>
+              <div class="agent-status-badge badge-idle">
+                <div class="status-dot"></div>Idle
+              </div>
+            </div>
+            <div class="agent-name">social-media-manager</div>
+            <div class="agent-repo">github.com/user/content-ops-studio</div>
+            <p style="font-size:12px; color:var(--fg-muted); margin-bottom:10px; line-height:1.4;">
+              跨平台内容运营与排版 Agent，公众号/小红书/Twitter 内容转化、格式美化与定时发布。
+            </p>
+            <div class="agent-skills-tags">
+              <span class="skill-tag">markdown-poster</span>
+              <span class="skill-tag">auto-publisher</span>
+              <span class="skill-tag">seo-tagger</span>
+            </div>
+            <div class="agent-footer">
+              <span>CLI: opencode</span>
+              <span class="agent-model-pill">gpt-4o-latest</span>
+            </div>
+          </div>
+
+          <!-- Card 5 -->
+          <div class="agent-card" data-agent-name="data-cleaner-sync" data-status="idle" data-cli="codex" onclick="selectAgent('data-cleaner-sync')" tabindex="0" role="button" aria-label="查看 Agent data-cleaner-sync 详情">
+            <div class="agent-card-header">
+              <div class="agent-avatar-badge">DC</div>
+              <div class="agent-status-badge badge-idle">
+                <div class="status-dot"></div>Idle
+              </div>
+            </div>
+            <div class="agent-name">data-cleaner-sync</div>
+            <div class="agent-repo">github.com/user/personal-data-pipeline</div>
+            <p style="font-size:12px; color:var(--fg-muted); margin-bottom:10px; line-height:1.4;">
+              文档表格解析与同步 Agent，PDF/发票 OCR 提取、Excel/CSV 数据清洗与飞书多维表格同步。
+            </p>
+            <div class="agent-skills-tags">
+              <span class="skill-tag">pdf-invoice-ocr</span>
+              <span class="skill-tag">csv-duckdb-transform</span>
+              <span class="skill-tag">feishu-sync</span>
+            </div>
+            <div class="agent-footer">
+              <span>CLI: codex</span>
+              <span class="agent-model-pill">terra / high reasoning</span>
+            </div>
+          </div>
+
+          <!-- Card 6 -->
+          <div class="agent-card" data-agent-name="workflow-orchestrator" data-status="idle" data-cli="opencode" onclick="selectAgent('workflow-orchestrator')" tabindex="0" role="button" aria-label="查看 Agent workflow-orchestrator 详情">
+            <div class="agent-card-header">
+              <div class="agent-avatar-badge">WF</div>
+              <div class="agent-status-badge badge-idle">
+                <div class="status-dot"></div>Idle
+              </div>
+            </div>
+            <div class="agent-name">workflow-orchestrator</div>
+            <div class="agent-repo">github.com/user/automation-center</div>
+            <p style="font-size:12px; color:var(--fg-muted); margin-bottom:10px; line-height:1.4;">
+              工作流定时调度 Agent，定时任务 Cron 触发、Webhook 接收与飞书/钉钉机器人通知。
+            </p>
+            <div class="agent-skills-tags">
+              <span class="skill-tag">cron-scheduler</span>
+              <span class="skill-tag">feishu-notifier</span>
+            </div>
+            <div class="agent-footer">
+              <span>CLI: opencode</span>
+              <span class="agent-model-pill">gpt-4o-latest</span>
+            </div>
+          </div>
+
+          <!-- Empty State -->
+          <div id="agent-empty-state" class="empty-state" style="display:none;">
+            <div style="font-weight:600; font-size:14px; margin-bottom:4px; color:var(--fg-primary);">未找到匹配的 Agent 工作区</div>
+            <div style="font-size:12px; color:var(--fg-muted);">请尝试调整搜索关键词或重置筛选条件，或通过右上角按钮新建导入。</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================================================
+           VIEW 3: AGENT DETAIL & CONFIG
+           =================================================================== -->
+      <div id="view-agent-detail" class="view-pane" data-od-id="view-agent-detail">
+        <div class="page-header">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <h1 class="page-title" id="detail-agent-name" style="font-family:var(--font-mono);">web-browser-ops</h1>
+              <span class="agent-status-badge badge-working" id="detail-agent-status">Working</span>
+            </div>
+            <p class="page-desc" id="detail-agent-repo">绑定工作区: github.com/user/web-ops-scripts · 分支: main</p>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-secondary" onclick="showToast('已重新扫描工作区 .agent/skills/ 目录！发现 4 个 Skill。')">同步 Workspace Skill</button>
+            <button class="btn btn-primary" onclick="showToast('Agent 参数与模型路由配置已保存！')">保存 Agent 配置</button>
+          </div>
+        </div>
+
+        <div class="agent-detail-layout">
+          <!-- Left Inspector -->
+          <div class="detail-sidebar-card">
+            <h3 style="font-size:13px; font-weight:700; margin-bottom:14px; border-bottom:1px solid var(--border-color); padding-bottom:8px; color:var(--fg-primary);">
+              模型与 CLI 驱动配置
+            </h3>
+
+            <div class="form-group">
+              <label class="form-label">底层 CLI 执行引擎</label>
+              <select class="form-select" id="engine-select">
+                <option selected>Cursor Agent CLI (playwright mode)</option>
+                <option>Codex CLI (data reasoning)</option>
+                <option>OpenCode CLI (api/bot)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">指定模型 (Preferred Model)</label>
+              <select class="form-select">
+                <option selected>claude-3.7-sonnet (Vision & DOM)</option>
+                <option>gpt-5.6-terra (Codex Reasoning)</option>
+                <option>gpt-4o-latest</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Reasoning Effort (推理深度)</label>
+              <div class="reasoning-pills">
+                <div class="reasoning-pill" onclick="setReasoning(this)">Low</div>
+                <div class="reasoning-pill active" onclick="setReasoning(this)">Medium</div>
+                <div class="reasoning-pill" onclick="setReasoning(this)">High</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Temperature (随机温度)</label>
+              <div class="range-group">
+                <input type="range" min="0" max="1" step="0.05" value="0.2" class="range-input" oninput="document.getElementById('temp-val').textContent = this.value" />
+                <span class="range-val" id="temp-val">0.2</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+                <label class="form-label" style="margin-bottom:0;">自动按任务路由</label>
+                <label class="switch">
+                  <input type="checkbox" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <p style="font-size:11px; color:var(--fg-muted);">遇到复杂 DOM 或验证码时自动提升 Reasoning Effort。</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Playwright 浏览器模式</label>
+              <select class="form-select">
+                <option selected>Headless (无头模式)</option>
+                <option>Headed (界面调试模式)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Right Content: Skill Management & Sandbox -->
+          <div>
+            <div class="card-panel">
+              <div class="panel-title-bar">
+                <div class="panel-title">工作区 Skill 技能列表</div>
+                <span style="font-size:11px; color:var(--fg-muted); font-family:var(--font-mono);">.agent/skills/</span>
+              </div>
+
+              <div class="skill-item-row" onclick="openSkillDetailModal('playwright-crawler.md', '启动 Headless Chromium，自动导航、绕过悬浮弹窗并抓取指定 DOM 结构。')">
+                <div class="skill-info">
+                  <div class="skill-title">
+                    <span>playwright-crawler.md</span>
+                    <span style="font-size:10px; color:var(--accent-primary); background:rgba(37,99,235,0.08); padding:1px 5px; border-radius:3px;">点击预览</span>
+                  </div>
+                  <div class="skill-desc">启动 Headless Chromium，自动导航、绕过悬浮弹窗并抓取指定 DOM 结构。</div>
+                </div>
+                <label class="switch" onclick="event.stopPropagation()">
+                  <input type="checkbox" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <div class="skill-item-row" onclick="openSkillDetailModal('form-auto-fill.md', '识别 Web 表单字段，实现自动化登录与表单数据提交。')">
+                <div class="skill-info">
+                  <div class="skill-title">
+                    <span>form-auto-fill.md</span>
+                    <span style="font-size:10px; color:var(--accent-primary); background:rgba(37,99,235,0.08); padding:1px 5px; border-radius:3px;">点击预览</span>
+                  </div>
+                  <div class="skill-desc">识别 Web 表单字段，实现自动化登录与表单数据提交。</div>
+                </div>
+                <label class="switch" onclick="event.stopPropagation()">
+                  <input type="checkbox" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <div class="skill-item-row" onclick="openSkillDetailModal('session-cookie-keeper.md', '持久化保存并恢复 Cookie 与 LocalStorage，维持登录 Session。')">
+                <div class="skill-info">
+                  <div class="skill-title">
+                    <span>session-cookie-keeper.md</span>
+                    <span style="font-size:10px; color:var(--accent-primary); background:rgba(37,99,235,0.08); padding:1px 5px; border-radius:3px;">点击预览</span>
+                  </div>
+                  <div class="skill-desc">持久化保存并恢复 Cookie 与 LocalStorage，维持登录 Session。</div>
+                </div>
+                <label class="switch" onclick="event.stopPropagation()">
+                  <input type="checkbox" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <div class="skill-item-row" onclick="openSkillDetailModal('captcha-solver.md', '检测图形验证码与滑动验证，结合视觉 LLM 进行识别重试。')">
+                <div class="skill-info">
+                  <div class="skill-title">
+                    <span>captcha-solver.md</span>
+                    <span style="font-size:10px; color:var(--accent-primary); background:rgba(37,99,235,0.08); padding:1px 5px; border-radius:3px;">点击预览</span>
+                  </div>
+                  <div class="skill-desc">检测图形验证码与滑动验证，结合视觉 LLM 进行识别重试。</div>
+                </div>
+                <label class="switch" onclick="event.stopPropagation()">
+                  <input type="checkbox">
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Single Agent Prompt Sandbox Test -->
+            <div class="card-panel">
+              <div class="panel-title">单 Agent Prompt 沙盒测试</div>
+              <p style="font-size:11.5px; color:var(--fg-muted); margin: 4px 0 12px 0;">直接在当前工作区上下文运行 CLI 调试命令：</p>
+
+              <div style="display:flex; gap:8px; margin-bottom:12px;">
+                <input type="text" class="form-input" id="sandbox-prompt" value="启动 Playwright 验证目标网站登录状态并刷新 Session Cookie" />
+                <button class="btn btn-primary" onclick="runSandboxTest()">运行测试</button>
+              </div>
+
+              <div class="terminal-window" style="height:140px;">
+                <div class="terminal-header">
+                  <span>Terminal Stream · cursor-agent --mode agent</span>
+                  <span>Exit: 0</span>
+                </div>
+                <div class="terminal-body" id="sandbox-term">
+                  <div class="log-line"><span class="log-time">10:14:02</span><span class="log-exec">[EXEC]</span> cursor-agent --mode agent -C /workspaces/web-ops-scripts</div>
+                  <div class="log-line"><span class="log-time">10:14:03</span><span class="log-ok">[OK]</span> Playwright browser launched (chromium headless: true).</div>
+                  <div class="log-line"><span class="log-time">10:14:04</span><span class="log-ok">[RESULT]</span> Session valid. Cookie saved to .cookies/target.json</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================================================
+           VIEW 4: DISPATCH HUB WORKBENCH
+           =================================================================== -->
+      <div id="view-commander" class="view-pane" data-od-id="view-commander">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">调度中枢</h1>
+            <p class="page-desc">输入综合自动化目标，调度中枢将自动分析意图、拆解任务、匹配 Agent/Skill 并路由分发。</p>
+          </div>
+        </div>
+
+        <!-- High-level Prompt Input Box -->
+        <div class="commander-prompt-box" data-od-id="commander-prompt-box">
+          <textarea class="commander-input" id="commander-prompt-text" placeholder="输入综合自动化与运营目标...">启动 Playwright 抓取竞品 A/B/C 网站的最新产品价格与促销活动，由 research-collector 提取 JSON 并汇总对比，生成 Markdown 竞品简报，并调用 workflow-orchestrator 自动发送到飞书工作群。</textarea>
+          
+          <div class="commander-bar-footer">
+            <div class="template-chips">
+              <span style="font-size:11px; color:var(--fg-muted); align-self:center;">快捷模版：</span>
+              <span class="chip-item" onclick="fillCommanderTemplate(1)">全网竞品价格监控</span>
+              <span class="chip-item" onclick="fillCommanderTemplate(2)">每日网站巡检测试</span>
+              <span class="chip-item" onclick="fillCommanderTemplate(3)">跨平台文章自动排版发布</span>
+            </div>
+
+            <button class="btn btn-primary" onclick="startOrchestration()" id="start-orch-btn" data-od-id="start-orch-btn">
+              <span>启动智能调度拆解 (Orchestrate)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Orchestration Workflow Flow -->
+        <div id="orch-results" class="orchestration-flow" data-od-id="orch-results">
+          <div class="panel-title-bar">
+            <div class="panel-title">智能调度拆解与路由方案</div>
+            <button class="btn btn-primary btn-sm" onclick="dispatchCommanderTask()" style="background:var(--accent-emerald);">确认并分发任务 (Dispatch)</button>
+          </div>
+
+          <!-- Step 1 -->
+          <div class="orch-step-card">
+            <div class="step-number">1</div>
+            <div class="step-content">
+              <div class="step-header">
+                <div class="step-title">意图分析 (Intent Analysis)</div>
+                <span class="skill-tag" style="background:rgba(5,150,105,0.1); color:#047857;">Web Automation & Market Intel</span>
+              </div>
+              <p style="font-size:12px; color:var(--fg-secondary);">
+                检测到综合任务流需求：包含 Playwright 无头浏览器网页抓取、多维度数据清洗提取、Markdown 简报生成与飞书机器人自动化通知。
+              </p>
+            </div>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="orch-step-card">
+            <div class="step-number">2</div>
+            <div class="step-content">
+              <div class="step-header">
+                <div class="step-title">任务子目标拆解 (Task Decomposition)</div>
+                <span style="font-size:11px; color:var(--fg-muted);">3 个关联子任务</span>
+              </div>
+              <div style="font-size:12px; line-height:1.6; color:var(--fg-secondary); font-family:var(--font-mono);">
+                <div style="margin-bottom:3px;">1. [web-browser-ops] 启动 Playwright 访问 3 个竞品官网，抓取价格与促销 DOM 文本。</div>
+                <div style="margin-bottom:3px;">2. [research-collector] 结构化提炼 JSON 数据，清洗并汇总生成 Markdown 竞品周报。</div>
+                <div>3. [workflow-orchestrator] 触发飞书 Webhook 接口，将格式化简报推送至指定频道。</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="orch-step-card">
+            <div class="step-number">3</div>
+            <div class="step-content">
+              <div class="step-header">
+                <div class="step-title">Agent & Skill & Model 路由矩阵</div>
+              </div>
+              <table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:6px;">
+                <thead>
+                  <tr style="text-align:left; color:var(--fg-muted); border-bottom:1px solid var(--border-color); font-size:11px; text-transform:uppercase;">
+                    <th style="padding:6px;">子任务</th>
+                    <th style="padding:6px;">分配 Agent</th>
+                    <th style="padding:6px;">调用的 Skill</th>
+                    <th style="padding:6px;">Model & Reasoning</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style="border-bottom:1px solid var(--border-color);">
+                    <td style="padding:6px;">Task #1 网页价格抓取</td>
+                    <td style="padding:6px; font-weight:600; color:#d97706; font-family:var(--font-mono);">web-browser-ops</td>
+                    <td style="padding:6px;"><span class="skill-tag">playwright-crawler.md</span></td>
+                    <td style="padding:6px; font-family:var(--font-mono); color:#7c3aed;">cursor-agent (claude-3.7)</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid var(--border-color);">
+                    <td style="padding:6px;">Task #2 数据清洗与简报</td>
+                    <td style="padding:6px; font-weight:600; color:#2563eb; font-family:var(--font-mono);">research-collector</td>
+                    <td style="padding:6px;"><span class="skill-tag">llm-summarizer.md</span></td>
+                    <td style="padding:6px; font-family:var(--font-mono); color:#7c3aed;">codex / sol (medium)</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px;">Task #3 飞书卡片推送</td>
+                    <td style="padding:6px; font-weight:600; color:#059669; font-family:var(--font-mono);">workflow-orchestrator</td>
+                    <td style="padding:6px;"><span class="skill-tag">feishu-notifier.md</span></td>
+                    <td style="padding:6px; font-family:var(--font-mono); color:#7c3aed;">opencode (gpt-4o)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================================================
+           VIEW 5: TASK CENTER & DAG DETAIL
+           =================================================================== -->
+      <div id="view-tasks" class="view-pane" data-od-id="view-tasks">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">任务中心与 DAG 协同</h1>
+            <p class="page-desc">监控多 Agent 依赖 DAG 图、Playwright 实时终端日志流与自动化产物。</p>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-secondary btn-sm" id="toggle-stream-btn" onclick="toggleLiveLogStream()">⏸ 暂停日志流</button>
+            <button class="btn btn-secondary btn-sm" onclick="copyTerminalLogs()">复制日志</button>
+          </div>
+        </div>
+
+        <div class="task-split-layout">
+          <!-- Left Task History List -->
+          <div class="task-list-panel">
+            <div class="task-list-header">
+              <span>任务执行历史</span>
+              <span style="font-size:11px; font-weight:normal; color:var(--fg-muted);">共 3 个</span>
+            </div>
+            
+            <div class="task-item-card active" onclick="switchTaskHistory(this, 'task1')">
+              <div class="task-item-title">#2026-0801 全网竞品价格与动态监控</div>
+              <div class="task-item-meta">
+                <span style="color:var(--accent-amber);">⚡ 65% 执行中</span>
+                <span>03m 42s</span>
+              </div>
+            </div>
+
+            <div class="task-item-card" onclick="switchTaskHistory(this, 'task2')">
+              <div class="task-item-title">#2026-0731 每日网站 UI 巡检与断链检测</div>
+              <div class="task-item-meta">
+                <span style="color:var(--accent-emerald);">已完成</span>
+                <span>01m 15s</span>
+              </div>
+            </div>
+
+            <div class="task-item-card" onclick="switchTaskHistory(this, 'task3')">
+              <div class="task-item-title">#2026-0730 周报跨平台自动排版与草稿发布</div>
+              <div class="task-item-meta">
+                <span style="color:var(--accent-emerald);">已完成</span>
+                <span>02m 08s</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Task Detail DAG & Stream Terminal -->
+          <div style="display:flex; flex-direction:column; gap:14px; overflow-y:auto;">
+            
+            <!-- DAG Topology Visualization -->
+            <div class="card-panel" style="margin-bottom:0;">
+              <div class="panel-title-bar">
+                <div class="panel-title">任务依赖拓扑图 (Task DAG)</div>
+                <div style="display:flex; gap:6px;">
+                  <button class="btn btn-secondary btn-sm" onclick="showToast('正在切换 Headed 模式重新尝试...')">浏览器失败重试</button>
+                  <button class="btn btn-secondary btn-sm" onclick="showToast('已人工跳过当前阻断节点！')">人工跳过</button>
+                </div>
+              </div>
+
+              <!-- Compact DAG SVG -->
+              <svg viewBox="0 0 700 110" style="width:100%; height:110px; background:#f8fafc; border:1px solid var(--border-color); border-radius:6px;">
+                <line x1="180" y1="55" x2="260" y2="55" stroke="#059669" stroke-width="1.5"/>
+                <line x1="440" y1="55" x2="520" y2="55" stroke="#d97706" stroke-width="1.5" stroke-dasharray="4" class="flowing-edge"/>
+
+                <!-- Node 1 -->
+                <g transform="translate(20, 20)" style="cursor:pointer;" onclick="filterTerminalByAgent('web-browser-ops')">
+                  <rect width="160" height="65" rx="6" fill="#ffffff" stroke="#059669" stroke-width="1.2"/>
+                  <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">1. web-browser-ops</text>
+                  <text x="12" y="42" fill="#059669" font-size="10" font-weight="600">Scraped 3 sites</text>
+                  <text x="12" y="56" fill="#64748b" font-size="9" font-family="var(--font-mono)">Playwright / 01m 20s</text>
+                </g>
+
+                <!-- Node 2 -->
+                <g transform="translate(260, 20)" style="cursor:pointer;" onclick="filterTerminalByAgent('research-collector')">
+                  <rect width="180" height="65" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.5"/>
+                  <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">2. research-collector</text>
+                  <text x="12" y="42" fill="#b45309" font-size="10" font-weight="600">Working (Markdown 80%)</text>
+                  <text x="12" y="56" fill="#64748b" font-size="9" font-family="var(--font-mono)">Codex Sol / summary.md</text>
+                </g>
+
+                <!-- Node 3 -->
+                <g transform="translate(520, 20)" style="cursor:pointer;" onclick="filterTerminalByAgent('workflow-orchestrator')">
+                  <rect width="160" height="65" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+                  <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">3. workflow-orchestrator</text>
+                  <text x="12" y="42" fill="#64748b" font-size="10">Waiting Node #2</text>
+                  <text x="12" y="56" fill="#64748b" font-size="9" font-family="var(--font-mono)">Feishu Webhook Bot</text>
+                </g>
+              </svg>
+            </div>
+
+            <!-- Terminal Stream Viewer -->
+            <div class="terminal-window" style="height:210px;" data-od-id="task-terminal">
+              <div class="terminal-header">
+                <div style="display:flex; gap:10px; align-items:center;">
+                  <span>实时终端 & Playwright 日志流</span>
+                  <div class="terminal-tabs">
+                    <span class="term-tab active" onclick="filterTermTab(this, 'all')">All</span>
+                    <span class="term-tab" onclick="filterTermTab(this, 'browser')">browser-ops</span>
+                    <span class="term-tab" onclick="filterTermTab(this, 'collector')">research-collector</span>
+                  </div>
+                </div>
+                <div>
+                  <button style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:11px; font-family:var(--font-mono);" onclick="clearLogs()">Clear</button>
+                </div>
+              </div>
+              <div class="terminal-body" id="live-terminal-body">
+                <div class="log-line" data-agent="browser"><span class="log-time">10:15:10</span><span class="log-agent">[web-browser-ops]</span><span class="log-ok">[OK]</span> Playwright browser launched. Navigating to competitor-a.com...</div>
+                <div class="log-line" data-agent="browser"><span class="log-time">10:15:12</span><span class="log-agent">[web-browser-ops]</span><span class="log-exec">[SCRAPE]</span> Extracted 12 pricing items. Saved raw_a.json</div>
+                <div class="log-line" data-agent="collector"><span class="log-time">10:15:15</span><span class="log-agent">[research-collector]</span><span class="log-ok">[SKILL]</span> Applying skill 'llm-summarizer.md'...</div>
+                <div class="log-line" data-agent="collector"><span class="log-time">10:15:18</span><span class="log-agent">[research-collector]</span><span class="log-exec">[WRITE]</span> Generated market-intel-hub/summary.md (+82 lines).</div>
+                <div class="log-line" data-agent="collector"><span class="log-time">10:15:22</span><span class="log-agent">[research-collector]</span><span class="log-warn">[VALIDATE]</span> Checking markdown formatting... Verified.</div>
+              </div>
+            </div>
+
+            <!-- Data & Document Artifact Preview -->
+            <div class="card-panel" style="margin-bottom:0;">
+              <div class="panel-title-bar">
+                <div class="panel-title">自动化产生的数据与文档产物</div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <span style="font-size:11px; color:var(--fg-muted); font-family:var(--font-mono);">market-intel-hub / summary.md</span>
+                  <button class="btn btn-secondary btn-sm" onclick="showToast('已复制产物到剪贴板！')">复制产物</button>
+                </div>
+              </div>
+
+              <div class="diff-box" id="artifact-content-box">
+                <div style="color:#38bdf8; font-weight:bold; margin-bottom:6px;"># 竞品价格与促销动态周报 (2026-08-01)</div>
+                <div style="color:#f1f5f9; margin-bottom:4px;">## 1. 核心变化摘要</div>
+                <div style="color:#4ade80;">- 竞品 A: 旗舰款降价 12% (原价 ¥299 -> 现价 ¥263)，限时赠送 14 天高级功能试用。</div>
+                <div style="color:#4ade80;">- 竞品 B: 推出全新个人自动化订阅包 (¥199/月)，主打 Playwright 网页抓取场景。</div>
+                <div style="color:#f1f5f9; margin-top:8px; margin-bottom:4px;">## 2. 结构化 JSON 数据</div>
+                <div style="color:#c084fc;">{ "scraped_at": "2026-08-01T10:15:20Z", "status": "success", "items_count": 12 }</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- Command + K Modal Dialog -->
+<div class="modal-overlay" id="cmdk-modal" onclick="closeCmdKModal(event)">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div style="display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--border-color); padding-bottom:10px; margin-bottom:14px;">
+      <input type="text" class="form-input" style="border:none; font-size:14px;" placeholder="快速搜索 Agent、Skill 或直接触发指令..." oninput="filterCmdK(this)" autofocus />
+      <span class="cmd-kbd">ESC</span>
+    </div>
+
+    <div style="font-size:10.5px; color:var(--fg-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;">Quick Nav</div>
+    <div style="display:flex; flex-direction:column; gap:4px;">
+      <div class="nav-item" onclick="switchView('overview', document.querySelector('[data-od-id=nav-overview]')); closeCmdKModal();">
+        <span>跳转至 全局总览</span>
+      </div>
+      <div class="nav-item" onclick="switchView('commander', document.querySelector('[data-od-id=nav-commander]')); closeCmdKModal();">
+        <span>启动 调度中枢工作台</span>
+      </div>
+      <div class="nav-item" onclick="switchView('tasks', document.querySelector('[data-od-id=nav-tasks]')); closeCmdKModal();">
+        <span>查看 运行中的 DAG 任务</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Import / Create Agent Modal -->
+<div class="modal-overlay" id="import-modal" onclick="closeImportModal(event)">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <h3 style="font-size:15px; font-weight:700; margin-bottom:8px; color:var(--fg-primary);">导入或新建 Agent 工作区</h3>
+    <p style="font-size:12px; color:var(--fg-muted); margin-bottom:14px;">指定本地或远程工作区路径，系统将自动扫描 <code>.agent/skills/</code> 技能描述。</p>
+
+    <div class="form-group">
+      <label class="form-label">Agent 标识名称</label>
+      <input type="text" class="form-input" placeholder="例如: web-browser-ops" />
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">工作区 Workspace 路径 / Git URL</label>
+      <input type="text" class="form-input" placeholder="/Users/user/workspaces/web-ops-scripts" />
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">默认 CLI 执行引擎</label>
+      <select class="form-select">
+        <option>Cursor Agent CLI (playwright engine)</option>
+        <option>Codex CLI</option>
+        <option>OpenCode CLI</option>
+      </select>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeImportModal()">取消</button>
+      <button class="btn btn-primary" onclick="showToast('成功接入新 Agent 工作区！自动完成 3 个技能感知。'); closeImportModal();">完成导入并感知 Skill</button>
+    </div>
+  </div>
+</div>
+
+<!-- Skill Detail Modal -->
+<div class="modal-overlay" id="skill-modal" onclick="closeSkillDetailModal(event)">
+  <div class="modal-card" onclick="event.stopPropagation()" style="width:580px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+      <h3 style="font-size:14px; font-weight:700; font-family:var(--font-mono);" id="skill-modal-filename">skill-file.md</h3>
+      <button class="btn btn-secondary btn-sm" onclick="closeSkillDetailModal()">关闭</button>
+    </div>
+    <div style="font-size:12px; color:var(--fg-muted); margin-bottom:12px;" id="skill-modal-desc">技能描述</div>
+    <div style="background:#0f172a; border-radius:var(--radius-md); padding:12px; font-family:var(--font-mono); font-size:11.5px; color:#f1f5f9; line-height:1.6; max-height:260px; overflow-y:auto;" id="skill-modal-body">
+      # Skill Definition<br/>
+      > Category: Playwright Web Automation<br/><br/>
+      ## Capabilities<br/>
+      1. Launch Headless Chromium browser via Cursor Agent CLI.<br/>
+      2. Handle page cookies, DOM element selection, and screenshot capture.<br/>
+      3. Return structured JSON payload for downstream LLM processing.
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toast-container"></div>
+
+<!-- Interactive Application JS Logic -->
+<script>
+  let isStreamActive = true;
+  let streamInterval = null;
+
+  function showToast(message) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = 'toast-msg';
+    toast.innerHTML = `<span class="status-dot"></span><span>${message}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.2s ease';
+      setTimeout(() => toast.remove(), 200);
+    }, 2400);
+  }
+
+  function switchView(viewId, navElement) {
+    document.querySelectorAll('.view-pane').forEach(pane => {
+      pane.classList.remove('active');
+      pane.setAttribute('aria-hidden', 'true');
+    });
+
+    const targetPane = document.getElementById('view-' + viewId);
+    if (targetPane) {
+      targetPane.classList.add('active');
+      targetPane.setAttribute('aria-hidden', 'false');
+    }
+
+    if (navElement) {
+      document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+        item.setAttribute('aria-selected', 'false');
+      });
+      navElement.classList.add('active');
+      navElement.setAttribute('aria-selected', 'true');
+    }
+  }
+
+  function filterAgents() {
+    const searchVal = (document.getElementById('agent-search-input')?.value || '').toLowerCase().trim();
+    const statusVal = document.getElementById('agent-status-filter')?.value || 'all';
+    const cliVal = document.getElementById('agent-cli-filter')?.value || 'all';
+
+    const cards = document.querySelectorAll('.agent-card');
+    let visibleCount = 0;
+
+    cards.forEach(card => {
+      const name = (card.getAttribute('data-agent-name') || '').toLowerCase();
+      const status = card.getAttribute('data-status') || '';
+      const cli = card.getAttribute('data-cli') || '';
+      const content = card.textContent.toLowerCase();
+
+      const matchesSearch = !searchVal || name.includes(searchVal) || content.includes(searchVal);
+      const matchesStatus = statusVal === 'all' || status === statusVal;
+      const matchesCli = cliVal === 'all' || cli === cliVal;
+
+      if (matchesSearch && matchesStatus && matchesCli) {
+        card.style.display = 'block';
+        visibleCount++;
+      } else {
+        card.style.display = 'none';
+      }
+    });
+
+    const emptyState = document.getElementById('agent-empty-state');
+    if (emptyState) {
+      emptyState.style.display = visibleCount === 0 ? 'flex' : 'none';
+    }
+  }
+
+  function selectAgent(agentName) {
+    document.getElementById('detail-agent-name').textContent = agentName;
+    document.getElementById('detail-agent-repo').textContent = '绑定工作区: github.com/user/' + agentName + ' · 分支: main';
+    switchView('agent-detail', document.querySelector('[data-od-id=nav-agent-detail]'));
+    showToast('已载入 Agent [' + agentName + '] 的全量配置');
+  }
+
+  function setReasoning(pillElement) {
+    const parent = pillElement.parentElement;
+    parent.querySelectorAll('.reasoning-pill').forEach(p => p.classList.remove('active'));
+    pillElement.classList.add('active');
+    showToast('推理深度已更新为: ' + pillElement.textContent);
+  }
+
+  function openCmdKModal() {
+    const modal = document.getElementById('cmdk-modal');
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+    const input = modal.querySelector('input');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+  }
+
+  function closeCmdKModal() {
+    const modal = document.getElementById('cmdk-modal');
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function filterCmdK(inputEl) {
+    const query = inputEl.value.toLowerCase().trim();
+    const items = document.querySelectorAll('#cmdk-modal .nav-item');
+    items.forEach(item => {
+      const text = item.textContent.toLowerCase();
+      item.style.display = (!query || text.includes(query)) ? 'flex' : 'none';
+    });
+  }
+
+  function openImportModal() {
+    const modal = document.getElementById('import-modal');
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeImportModal() {
+    const modal = document.getElementById('import-modal');
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function openSkillDetailModal(filename, desc) {
+    document.getElementById('skill-modal-filename').textContent = filename;
+    document.getElementById('skill-modal-desc').textContent = desc;
+    document.getElementById('skill-modal').classList.add('active');
+  }
+
+  function closeSkillDetailModal() {
+    document.getElementById('skill-modal').classList.remove('active');
+  }
+
+  function fillCommanderTemplate(type) {
+    const textarea = document.getElementById('commander-prompt-text');
+    if (type === 1) {
+      textarea.value = "启动 Playwright 抓取竞品 A/B/C 网站的最新产品价格与促销活动，由 research-collector 提取 JSON 并汇总对比，生成 Markdown 竞品简报，并调用 workflow-orchestrator 自动发送到飞书工作群。";
+    } else if (type === 2) {
+      textarea.value = "使用 qa-regression-bot 启动无头浏览器，对主站与商城的 12 个核心页面执行 UI 巡检与断链检测，若发现加载时延超 2s 则触发告警。";
+    } else if (type === 3) {
+      textarea.value = "将本地 Markdown 周报自动转换为微信公众号与小红书美化排版，调用 web-browser-ops 登录后台发布草稿并记录排期。";
+    }
+    showToast('已载入模版，准备拆解');
+  }
+
+  function startOrchestration() {
+    const btn = document.getElementById('start-orch-btn');
+    btn.innerHTML = "正在分析意图与建图 (Orchestrating)...";
+    btn.style.opacity = "0.7";
+
+    setTimeout(() => {
+      btn.innerHTML = "启动智能调度拆解 (Orchestrate)";
+      btn.style.opacity = "1";
+      showToast('调度拆解完成！包含 3 个子任务与路由矩阵');
+    }, 450);
+  }
+
+  function dispatchCommanderTask() {
+    showToast('任务已成功分发至对应 Repo 协同队列！');
+    switchView('tasks', document.querySelector('[data-od-id=nav-tasks]'));
+  }
+
+  function runSandboxTest() {
+    const term = document.getElementById('sandbox-term');
+    const prompt = document.getElementById('sandbox-prompt').value;
+    const time = new Date().toTimeString().split(' ')[0];
+
+    const newLine = document.createElement('div');
+    newLine.className = 'log-line';
+    newLine.innerHTML = `<span class="log-time">${time}</span><span class="log-exec">[EXEC]</span> Running prompt: "${prompt}"...`;
+    term.appendChild(newLine);
+
+    setTimeout(() => {
+      const resLine = document.createElement('div');
+      resLine.className = 'log-line';
+      resLine.innerHTML = `<span class="log-time">${time}</span><span class="log-ok">[OK]</span> Output generated via Cursor Agent CLI + Playwright engine. Test passed!`;
+      term.appendChild(resLine);
+      term.scrollTop = term.scrollHeight;
+      showToast('沙盒测试命令运行完成');
+    }, 600);
+  }
+
+  function clearLogs() {
+    document.getElementById('live-terminal-body').innerHTML = '<div class="log-line"><span class="log-time">System</span> Logs cleared.</div>';
+    showToast('终端日志已清空');
+  }
+
+  function copyTerminalLogs() {
+    showToast('终端日志已复制到剪贴板！');
+  }
+
+  function toggleLiveLogStream() {
+    const btn = document.getElementById('toggle-stream-btn');
+    if (isStreamActive) {
+      isStreamActive = false;
+      btn.textContent = '▶ 恢复日志流';
+      clearInterval(streamInterval);
+      showToast('已暂停日志流');
+    } else {
+      isStreamActive = true;
+      btn.textContent = '⏸ 暂停日志流';
+      startLogSimulation();
+      showToast('已恢复日志流');
+    }
+  }
+
+  function filterTermTab(tabEl, filterType) {
+    document.querySelectorAll('.term-tab').forEach(t => t.classList.remove('active'));
+    tabEl.classList.add('active');
+    
+    const lines = document.querySelectorAll('#live-terminal-body .log-line');
+    lines.forEach(line => {
+      if (filterType === 'all') {
+        line.style.display = 'block';
+      } else {
+        const agent = line.getAttribute('data-agent');
+        line.style.display = (agent === filterType) ? 'block' : 'none';
+      }
+    });
+  }
+
+  function filterTerminalByAgent(agentName) {
+    showToast('已按 Agent [' + agentName + '] 过滤日志视角');
+  }
+
+  function switchTaskHistory(cardEl, taskId) {
+    document.querySelectorAll('.task-item-card').forEach(c => c.classList.remove('active'));
+    cardEl.classList.add('active');
+    showToast('切换至任务视角: ' + taskId);
+  }
+
+  function startLogSimulation() {
+    if (streamInterval) clearInterval(streamInterval);
+    const mockLogs = [
+      { time: '10:15:26', agent: '[research-collector]', tag: 'log-ok', label: '[SYNC]', text: 'Syncing markdown payload to feishu-webhook buffer...' },
+      { time: '10:15:30', agent: '[workflow-orchestrator]', tag: 'log-exec', label: '[BOT]', text: 'Feishu Webhook triggered successfully. HTTP 200 OK.' },
+      { time: '10:15:35', agent: '[web-browser-ops]', tag: 'log-ok', label: '[CLEANUP]', text: 'Playwright browser context closed cleanly.' }
+    ];
+    let idx = 0;
+    streamInterval = setInterval(() => {
+      if (!isStreamActive) return;
+      if (idx >= mockLogs.length) {
+        clearInterval(streamInterval);
+        return;
+      }
+      const item = mockLogs[idx++];
+      const body = document.getElementById('live-terminal-body');
+      if (body) {
+        const line = document.createElement('div');
+        line.className = 'log-line';
+        line.setAttribute('data-agent', 'collector');
+        line.innerHTML = `<span class="log-time">${item.time}</span><span class="log-agent">${item.agent}</span><span class="${item.tag}">${item.label}</span> ${item.text}`;
+        body.appendChild(line);
+        body.scrollTop = body.scrollHeight;
+      }
+    }, 4500);
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      openCmdKModal();
+    }
+    if (e.key === 'Escape') {
+      closeCmdKModal();
+      closeImportModal();
+      closeSkillDetailModal();
+    }
+  });
+
+  // Init
+  startLogSimulation();
+</script>
+
+</body>
+</html>
