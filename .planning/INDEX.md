@@ -6,7 +6,7 @@ All executable plans for v1.0. Each `*-PLAN.md` is a prompt for Claude to execut
 |-------|------|------|--------|
 | 1 Foundation | 01-01 Scaffold + migrate | [01-01-PLAN.md](phases/01-foundation/01-01-PLAN.md) | Done |
 | 1 | 01-02 Router + modals | [01-02-PLAN.md](phases/01-foundation/01-02-PLAN.md) | Done |
-| 1 | 01-03 IPC hello-path | [01-03-PLAN.md](phases/01-foundation/01-03-PLAN.md) | Pending |
+| 1 | 01-03 IPC hello-path | [01-03-PLAN.md](phases/01-foundation/01-03-PLAN.md) | Done |
 | 2 Persistence | 02-01 Schema + migrate | [02-01-PLAN.md](phases/02-persistence/02-01-PLAN.md) | Pending |
 | 2 | 02-02 Registry repos + IPC | [02-02-PLAN.md](phases/02-persistence/02-02-PLAN.md) | Pending |
 | 2 | 02-03 Task domain repos | [02-03-PLAN.md](phases/02-persistence/02-03-PLAN.md) | Pending |

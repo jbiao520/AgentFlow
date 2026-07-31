@@ -8,7 +8,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: Foundation** - Tauri 工程、原型迁入、路由与 IPC 骨架 *(executing)*
+- [x] **Phase 1: Foundation** - Tauri 工程、原型迁入、路由与 IPC 骨架 *(executing)*
 - [ ] **Phase 2: Persistence** - SQLite 模型、迁移与 Repository
 - [ ] **Phase 3: Agent & Skill** - 导入工作区、Skill 扫描、矩阵/详情接真数据
 - [ ] **Phase 4: CLI Runtime** - 三引擎适配、沙盒执行、日志流
@@ -25,7 +25,7 @@
 Plans:
 - [x] 01-01: 初始化 Tauri 2 + vanilla-ts，迁入原型 — [01-01-PLAN.md](phases/01-foundation/01-01-PLAN.md)
 - [x] 01-02: 类型化路由 + Cmd+K/导入/Skill 弹窗 — [01-02-PLAN.md](phases/01-foundation/01-02-PLAN.md)
-- [ ] 01-03: IPC `ping` / `app_info` / `reveal_in_finder` — [01-03-PLAN.md](phases/01-foundation/01-03-PLAN.md)
+- [x] 01-03: IPC `ping` / `app_info` / `reveal_in_finder` — [01-03-PLAN.md](phases/01-foundation/01-03-PLAN.md)
 
 ### Phase 2: Persistence
 **Goal**: Agent / Skill / Orchestrator / Task 相关表可读写，App 重启数据仍在  
@@ -81,7 +81,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/3 | In progress | - |
+| 1. Foundation | 3/3 | Complete | 2026-07-31 |
 | 2. Persistence | 0/3 | Not started | - |
 | 3. Agent & Skill | 0/3 | Not started | - |
 | 4. CLI Runtime | 0/3 | Not started | - |

@@ -1,4 +1,5 @@
 import shellHtml from "./ui/app-shell.html?raw";
+import { initAppInfo } from "./ui/app-info";
 import { initDemoActions } from "./ui/demo-actions";
 import { bindModals } from "./ui/modals";
 import { bindNav } from "./ui/nav";
@@ -12,6 +13,7 @@ function mountApp(): void {
   bindNav();
   bindModals();
   initDemoActions();
+  void initAppInfo();
 }
 
 window.addEventListener("DOMContentLoaded", () => {
