@@ -21,6 +21,6 @@ All executable plans for v1.0. Each `*-PLAN.md` is a prompt for Claude to execut
 | 5 | 05-03 Task center + retry | [05-03-PLAN.md](phases/05-orchestrator/05-03-PLAN.md) | Done |
 | 6 Overview & Polish | 06-01 Overview live data | [06-01-PLAN.md](phases/06-overview-polish/06-01-PLAN.md) | Done |
 | 6 | 06-02 Cmd+K + empty/error | [06-02-PLAN.md](phases/06-overview-polish/06-02-PLAN.md) | Done |
-| 6 | 06-03 Build + acceptance | [06-03-PLAN.md](phases/06-overview-polish/06-03-PLAN.md) | Pending |
+| 6 | 06-03 Build + acceptance | [06-03-PLAN.md](phases/06-overview-polish/06-03-PLAN.md) | Done |
 
-**Next to execute:** `06-03-PLAN.md`
+**v1.0 complete.** See [MILESTONES.md](MILESTONES.md) and [ACCEPTANCE.md](phases/06-overview-polish/ACCEPTANCE.md).

@@ -4,7 +4,7 @@
 
 从 HTML 原型落地为 macOS Tauri App：先搭壳与持久化，再接通 Agent/Skill 与 CLI 运行时，随后实现可配置调度中枢与 DAG 任务闭环，最后补齐总览拓扑与打包打磨，达到「原型 5 页全可用 + SQLite 可重启」的 v1.0。
 
-**Planning status:** 全部 6 个 Phase、共 **18** 份可执行 `PLAN.md` 已就绪（Phase 1–5 完成）.
+**Planning status:** 全部 6 个 Phase、共 **18** 份可执行 `PLAN.md` 已完成 — **v1.0**.
 
 ## Phases
 
@@ -13,7 +13,7 @@
 - [x] **Phase 3: Agent & Skill** - 导入工作区、Skill 扫描、矩阵/详情接真数据
 - [x] **Phase 4: CLI Runtime** - 三引擎适配、沙盒执行、日志流
 - [x] **Phase 5: Orchestrator** - 独立编排配置、Plan/Dispatch、DAG 执行与重试
-- [ ] **Phase 6: Overview & Polish** - 总览聚合、拓扑、Cmd+K、macOS 打包验收
+- [x] **Phase 6: Overview & Polish** - 总览聚合、拓扑、Cmd+K、macOS 打包验收
 
 ## Phase Details
 
@@ -73,9 +73,9 @@ Plans:
 **Plans**: 3
 
 Plans:
-- [ ] 06-01: 总览统计聚合 + 拓扑 — [06-01-PLAN.md](phases/06-overview-polish/06-01-PLAN.md)
-- [ ] 06-02: Cmd+K 增强 + 空态/错误态 — [06-02-PLAN.md](phases/06-overview-polish/06-02-PLAN.md)
-- [ ] 06-03: `tauri build` + SPEC §10 验收 — [06-03-PLAN.md](phases/06-overview-polish/06-03-PLAN.md)
+- [x] 06-01: 总览统计聚合 + 拓扑 — [06-01-PLAN.md](phases/06-overview-polish/06-01-PLAN.md)
+- [x] 06-02: Cmd+K 增强 + 空态/错误态 — [06-02-PLAN.md](phases/06-overview-polish/06-02-PLAN.md)
+- [x] 06-03: `tauri build` + SPEC §10 验收 — [06-03-PLAN.md](phases/06-overview-polish/06-03-PLAN.md)
 
 ## Progress
 
@@ -86,7 +86,7 @@ Plans:
 | 3. Agent & Skill | 3/3 | Complete | 2026-07-31 |
 | 4. CLI Runtime | 3/3 | Complete | 2026-07-31 |
 | 5. Orchestrator | 3/3 | Complete | 2026-07-31 |
-| 6. Overview & Polish | 0/3 | Not started | - |
+| 6. Overview & Polish | 3/3 | Complete | 2026-08-01 |
 
 ## Execution order
 

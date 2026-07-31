@@ -112,6 +112,7 @@ export async function selectAgentById(idOrName: string): Promise<void> {
   void import("./agents/detail-config").then((m) =>
     m.loadAgentDetailConfig(agent.id),
   );
+  void import("./agents/sandbox").then((m) => m.refreshSandboxAvailability());
   showToast(`已载入 Agent [${agent.name}] 的全量配置`);
 }
 
