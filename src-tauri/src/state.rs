@@ -1,18 +1,23 @@
 use rusqlite::Connection;
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use crate::engines::runner::CancelToken;
 
 /// Shared SQLite connection for Tauri managed state.
 pub struct DbState {
-    pub conn: Mutex<Connection>,
+    pub conn: Arc<Mutex<Connection>>,
 }
 
 impl DbState {
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
         }
+    }
+
+    pub fn conn_arc(&self) -> Arc<Mutex<Connection>> {
+        Arc::clone(&self.conn)
     }
 }
 
@@ -30,6 +35,29 @@ impl SandboxState {
 }
 
 impl Default for SandboxState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Active DAG run cancel tokens keyed by run_id.
+pub struct RunState {
+    pub cancels: Arc<Mutex<HashMap<String, CancelToken>>>,
+}
+
+impl RunState {
+    pub fn new() -> Self {
+        Self {
+            cancels: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub fn cancels_arc(&self) -> Arc<Mutex<HashMap<String, CancelToken>>> {
+        Arc::clone(&self.cancels)
+    }
+}
+
+impl Default for RunState {
     fn default() -> Self {
         Self::new()
     }

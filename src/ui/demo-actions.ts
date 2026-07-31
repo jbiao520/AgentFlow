@@ -46,8 +46,10 @@ export function initDemoActions(): void {
   }
 
   function dispatchCommanderTask(): void {
-    showToast("请先完成调度拆解；Dispatch 将在 Phase 05-02 接通");
-    showView("tasks");
+    const w = window as unknown as { dispatchCommanderTask?: () => void };
+    // workbench overwrites this after init
+    showToast("请先完成调度拆解后再分发");
+    void w;
   }
 
   function runSandboxTest(): void {

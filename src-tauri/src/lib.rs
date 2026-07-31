@@ -16,11 +16,12 @@ use commands::sandbox::{sandbox_cancel, sandbox_run};
 use commands::settings::{get_orchestrator_settings, update_orchestrator_settings};
 use commands::system::{app_info, ping, reveal_in_finder};
 use commands::tasks::{
-    append_task_log, create_goal, create_task_run, get_task_run, insert_task_nodes, list_task_logs,
-    list_task_runs, save_plan, update_node_status, update_run_progress,
+    append_task_log, cancel_run, create_goal, create_task_run, dispatch_plan, get_task_run,
+    insert_task_nodes, list_task_logs, list_task_runs, read_workspace_file, retry_node, save_plan,
+    skip_node, start_run, update_node_status, update_run_progress,
 };
 use db::open_db;
-use state::{DbState, SandboxState};
+use state::{DbState, RunState, SandboxState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -30,6 +31,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(DbState::new(conn))
         .manage(SandboxState::new())
+        .manage(RunState::new())
         .invoke_handler(tauri::generate_handler![
             ping,
             app_info,
@@ -63,7 +65,13 @@ pub fn run() {
             update_node_status,
             append_task_log,
             list_task_logs,
-            update_run_progress
+            update_run_progress,
+            dispatch_plan,
+            start_run,
+            cancel_run,
+            retry_node,
+            skip_node,
+            read_workspace_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

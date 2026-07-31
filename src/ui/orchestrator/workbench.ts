@@ -7,6 +7,8 @@ import {
   type OrchestrateResult,
   type PlanAnalysis,
 } from "../../lib/api/orchestrate";
+import { dispatchPlan, startRun } from "../../lib/api/tasks";
+import { showView } from "../router";
 import { showToast } from "../toast";
 
 export type WorkbenchState = {
@@ -34,6 +36,27 @@ function agentColor(name: string): string {
   return palette[h % palette.length];
 }
 
+async function dispatchCurrentPlan(): Promise<void> {
+  const planId = state.result?.plan_row?.id;
+  if (!planId) {
+    showToast("没有可分发的 Plan — 请先 Orchestrate");
+    return;
+  }
+  try {
+    const dispatched = await dispatchPlan(planId);
+    await startRun(dispatched.run.id);
+    showToast(`已分发 ${dispatched.nodes.length} 个节点，开始执行`);
+    showView("tasks");
+    window.dispatchEvent(
+      new CustomEvent("agentmind:run-started", {
+        detail: { runId: dispatched.run.id },
+      }),
+    );
+  } catch (e) {
+    showToast(`分发失败: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): void {
   const root = document.getElementById("orch-results");
   if (!root) return;
@@ -57,7 +80,7 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
       const skills =
         st.skills.length > 0
           ? st.skills
-              .map((s) => `<span class="skill-tag">${escapeHtml(s)}</span>`)
+              .map((sk) => `<span class="skill-tag">${escapeHtml(sk)}</span>`)
               .join(" ")
           : '<span style="color:var(--fg-muted);">—</span>';
       const model = [
@@ -131,6 +154,9 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
   `;
 
   root.style.display = "";
+  document.getElementById("dispatch-plan-btn")?.addEventListener("click", () => {
+    void dispatchCurrentPlan();
+  });
 }
 
 export function renderOrchestrateError(error: string, raw: string | null): void {
@@ -173,7 +199,6 @@ async function runOrchestrate(): Promise<void> {
   }
 
   try {
-    // Prefer live CLI; if UI has fixture textarea (dev), use it.
     const fixture = (
       document.getElementById("orch-fixture-json") as HTMLTextAreaElement | null
     )?.value.trim();
@@ -215,9 +240,13 @@ export function initOrchestratorWorkbench(): void {
       void runOrchestrate();
     });
 
-  // Keep window bridge for HTML onclick compatibility
   (window as unknown as { startOrchestration: () => void }).startOrchestration =
     () => {
       void runOrchestrate();
     };
+  (
+    window as unknown as { dispatchCommanderTask: () => void }
+  ).dispatchCommanderTask = () => {
+    void dispatchCurrentPlan();
+  };
 }

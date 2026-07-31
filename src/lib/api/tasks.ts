@@ -235,3 +235,132 @@ export async function updateRunProgress(
     status: status ?? null,
   });
 }
+
+export type DispatchResult = {
+  run: TaskRun;
+  nodes: TaskNode[];
+};
+
+export type StartRunResult = {
+  run_id: string;
+  started: boolean;
+};
+
+export type TaskLogEvent = {
+  run_id: string;
+  node_id: string | null;
+  ts: string;
+  agent_name: string | null;
+  level: string;
+  message: string;
+};
+
+export type TaskRunUpdatedEvent = {
+  run: TaskRun;
+  nodes: TaskNode[];
+};
+
+export type WorkspaceFileResult = {
+  path: string;
+  content: string;
+};
+
+export async function dispatchPlan(planId: string): Promise<DispatchResult> {
+  if (!isTauri()) {
+    return {
+      run: {
+        id: "browser-mock-run",
+        goal_id: "",
+        plan_id: planId,
+        status: "queued",
+        progress: 0,
+        started_at: new Date().toISOString(),
+        finished_at: null,
+        error: null,
+      },
+      nodes: [],
+    };
+  }
+  return invoke<DispatchResult>("dispatch_plan", { planId });
+}
+
+export async function startRun(
+  runId: string,
+  concurrency?: number | null,
+): Promise<StartRunResult> {
+  if (!isTauri()) return { run_id: runId, started: true };
+  return invoke<StartRunResult>("start_run", {
+    runId,
+    concurrency: concurrency ?? null,
+  });
+}
+
+export async function cancelRun(runId: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("cancel_run", { runId });
+}
+
+export async function retryNode(
+  runId: string,
+  nodeId: string,
+): Promise<TaskNode> {
+  if (!isTauri()) {
+    return {
+      id: nodeId,
+      run_id: runId,
+      seq: 0,
+      title: "",
+      agent_id: null,
+      skill_ids_json: null,
+      cli_engine: null,
+      model: null,
+      reasoning_effort: null,
+      depends_on_json: null,
+      status: "pending",
+      started_at: null,
+      finished_at: null,
+      artifact_paths_json: null,
+      retry_count: 1,
+    };
+  }
+  return invoke<TaskNode>("retry_node", { runId, nodeId });
+}
+
+export async function skipNode(
+  runId: string,
+  nodeId: string,
+): Promise<TaskNode> {
+  if (!isTauri()) {
+    return {
+      id: nodeId,
+      run_id: runId,
+      seq: 0,
+      title: "",
+      agent_id: null,
+      skill_ids_json: null,
+      cli_engine: null,
+      model: null,
+      reasoning_effort: null,
+      depends_on_json: null,
+      status: "skipped",
+      started_at: null,
+      finished_at: null,
+      artifact_paths_json: null,
+      retry_count: 0,
+    };
+  }
+  return invoke<TaskNode>("skip_node", { runId, nodeId });
+}
+
+export async function readWorkspaceFile(
+  agentId: string,
+  relativePath: string,
+): Promise<WorkspaceFileResult> {
+  if (!isTauri()) {
+    return { path: relativePath, content: "(browser mock)" };
+  }
+  return invoke<WorkspaceFileResult>("read_workspace_file", {
+    agentId,
+    relativePath,
+  });
+}
