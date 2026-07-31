@@ -1,6 +1,7 @@
 /**
  * AgentMind Tauri IPC convention (Phase 2+):
  * - Domain APIs live in `src/lib/api/*` (agents, settings, tasks).
+ * - Task APIs persist goals/plans/runs only; CLI execution is Phase 5.
  * - This module keeps system hello-path helpers (`ping`, `app_info`, `reveal_in_finder`).
  * - Command names are snake_case and match Rust `#[tauri::command]` fn names.
  * - Browser-only Vite preview must not crash: mock when Tauri globals are absent.
@@ -53,3 +54,4 @@ export async function dbHealth(): Promise<DbHealth> {
 
 export * from "./api/agents";
 export * from "./api/settings";
+export * from "./api/tasks";

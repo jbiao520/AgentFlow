@@ -10,6 +10,10 @@ use commands::agents::{
 use commands::db::db_health;
 use commands::settings::{get_orchestrator_settings, update_orchestrator_settings};
 use commands::system::{app_info, ping, reveal_in_finder};
+use commands::tasks::{
+    append_task_log, create_goal, create_task_run, get_task_run, insert_task_nodes, list_task_logs,
+    list_task_runs, save_plan, update_node_status, update_run_progress,
+};
 use db::open_db;
 use state::DbState;
 
@@ -34,7 +38,17 @@ pub fn run() {
             upsert_skills,
             set_skill_enabled,
             get_orchestrator_settings,
-            update_orchestrator_settings
+            update_orchestrator_settings,
+            create_goal,
+            save_plan,
+            create_task_run,
+            insert_task_nodes,
+            list_task_runs,
+            get_task_run,
+            update_node_status,
+            append_task_log,
+            list_task_logs,
+            update_run_progress
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
