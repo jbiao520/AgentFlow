@@ -2,6 +2,7 @@ pub mod agents;
 pub mod cli;
 pub mod db;
 pub mod orchestrate;
+pub mod overview;
 pub mod sandbox;
 pub mod settings;
 pub mod system;

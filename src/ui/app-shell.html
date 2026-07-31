@@ -110,28 +110,28 @@
         </div>
 
         <!-- Sleek Segmented Stats Panel -->
-        <div class="stats-bar">
+        <div class="stats-bar" data-od-id="overview-stats">
           <div class="stat-item">
             <div class="stat-label">注册 Agent 矩阵</div>
-            <div class="stat-value">6</div>
-            <div class="stat-sub">
-              <span class="status-dot" style="background:var(--accent-emerald);"></span> 100% 连通健康
+            <div class="stat-value" id="overview-stat-agents">—</div>
+            <div class="stat-sub" id="overview-stat-agents-sub">
+              <span class="status-dot" style="background:var(--accent-emerald);"></span> —
             </div>
           </div>
           <div class="stat-item">
             <div class="stat-label">运行中自动化任务</div>
-            <div class="stat-value" style="color: var(--accent-amber);">2</div>
-            <div class="stat-sub">Playwright + Codex OCR</div>
+            <div class="stat-value" id="overview-stat-running" style="color: var(--accent-amber);">—</div>
+            <div class="stat-sub" id="overview-stat-running-sub">加载中…</div>
           </div>
           <div class="stat-item">
             <div class="stat-label">今日完成调度</div>
-            <div class="stat-value">34</div>
-            <div class="stat-sub" style="color:var(--accent-emerald);">成功率 97.1%</div>
+            <div class="stat-value" id="overview-stat-completed">—</div>
+            <div class="stat-sub" id="overview-stat-completed-sub" style="color:var(--accent-emerald);">—</div>
           </div>
           <div class="stat-item">
             <div class="stat-label">Token & Reasoning 消耗</div>
-            <div class="stat-value">1.28M</div>
-            <div class="stat-sub" style="color:#7c3aed;">High Reasoning Effort</div>
+            <div class="stat-value" id="overview-stat-tokens">n/a</div>
+            <div class="stat-sub" id="overview-stat-tokens-sub" style="color:#7c3aed;">未计量 (v1)</div>
           </div>
         </div>
 
@@ -141,66 +141,11 @@
             <div class="panel-title">
               <span>Agent 协同拓扑图</span>
             </div>
-            <span style="font-size:11px; color:var(--fg-muted); font-family:var(--font-mono);">网页抓取 / 情报提炼 / 巡检测试 / 定时推送</span>
+            <span id="overview-topology-caption" style="font-size:11px; color:var(--fg-muted); font-family:var(--font-mono);">加载中…</span>
           </div>
 
           <div class="topology-container">
-            <svg class="topology-canvas" viewBox="0 0 900 250">
-              <defs>
-                <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
-                  <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgba(0,0,0,0.035)" stroke-width="1"/>
-                </pattern>
-                <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
-                </marker>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#grid)" />
-
-              <!-- Dependency Connecting Lines -->
-              <path d="M 170 125 C 240 125, 240 60, 320 60" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="4" class="flowing-edge" marker-end="url(#arrow)"/>
-              <path d="M 170 125 C 240 125, 240 125, 320 125" fill="none" stroke="#2563eb" stroke-width="1.5" class="flowing-edge" marker-end="url(#arrow)"/>
-              <path d="M 170 125 C 240 125, 240 190, 320 190" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="4" marker-end="url(#arrow)"/>
-              
-              <path d="M 470 60 C 550 60, 550 92, 630 92" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#arrow)"/>
-              <path d="M 470 125 C 550 125, 550 92, 630 92" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#arrow)"/>
-
-              <!-- Central Node: Dispatch Hub Agent -->
-              <g class="topology-node" transform="translate(30, 95)" onclick="switchView('commander', document.querySelector('[data-od-id=nav-commander]'))">
-                <rect width="140" height="60" rx="8" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/>
-                <text x="70" y="28" fill="#0f172a" font-size="12" font-weight="bold" font-family="var(--font-mono)" text-anchor="middle">Dispatch Hub</text>
-                <text x="70" y="44" fill="#2563eb" font-size="10" font-weight="600" text-anchor="middle">调度中枢</text>
-              </g>
-
-              <!-- Node 1: web-browser-ops -->
-              <g class="topology-node" transform="translate(320, 30)" onclick="selectAgent('web-browser-ops')">
-                <rect width="150" height="60" rx="8" fill="#ffffff" stroke="#d97706" stroke-width="1.2"/>
-                <circle cx="136" cy="12" r="3.5" fill="#d97706"/>
-                <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">web-browser-ops</text>
-                <text x="12" y="42" fill="#64748b" font-size="10">Playwright / Browser</text>
-              </g>
-
-              <!-- Node 2: research-collector -->
-              <g class="topology-node" transform="translate(320, 95)" onclick="selectAgent('research-collector')">
-                <rect width="150" height="60" rx="8" fill="#ffffff" stroke="#2563eb" stroke-width="1.2"/>
-                <circle cx="136" cy="12" r="3.5" fill="#2563eb"/>
-                <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">research-collector</text>
-                <text x="12" y="42" fill="#64748b" font-size="10">Intel & Markdown Brief</text>
-              </g>
-
-              <!-- Node 3: qa-regression-bot -->
-              <g class="topology-node" transform="translate(320, 160)" onclick="selectAgent('qa-regression-bot')">
-                <rect width="150" height="60" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
-                <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">qa-regression-bot</text>
-                <text x="12" y="42" fill="#64748b" font-size="10">Site Inspector Suite</text>
-              </g>
-
-              <!-- Target Node: social-media-manager -->
-              <g class="topology-node" transform="translate(630, 62)" onclick="selectAgent('social-media-manager')">
-                <rect width="150" height="60" rx="8" fill="#ffffff" stroke="#059669" stroke-width="1.2"/>
-                <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">social-media-mgr</text>
-                <text x="12" y="42" fill="#64748b" font-size="10">Content & Publisher</text>
-              </g>
-            </svg>
+            <svg id="overview-topology-svg" class="topology-canvas" viewBox="0 0 900 250"></svg>
           </div>
         </div>
 
@@ -221,28 +166,9 @@
                 <th style="padding:8px 10px;">耗时</th>
               </tr>
             </thead>
-            <tbody>
-              <tr style="border-bottom:1px solid var(--border-color); cursor:pointer;" onclick="switchView('tasks', document.querySelector('[data-od-id=nav-tasks]'))">
-                <td style="padding:10px;">
-                  <div style="font-weight:600; color:var(--fg-primary);">#2026-0801 全网竞品价格与促销动态监控</div>
-                  <div style="font-size:11px; color:var(--fg-muted);">拆解 3 个子任务 · Playwright 抓取、JSON 清洗与 Markdown 简报</div>
-                </td>
-                <td style="padding:10px;">
-                  <span class="skill-tag">web-browser-ops</span>
-                  <span class="skill-tag">research-collector</span>
-                </td>
-                <td style="padding:10px; font-family:var(--font-mono); font-size:11px; color:#7c3aed;">
-                  cursor-agent (playwright)
-                </td>
-                <td style="padding:10px;">
-                  <div style="display:flex; align-items:center; gap:8px;">
-                    <div style="flex:1; background:#e2e8f0; height:5px; border-radius:3px; overflow:hidden;">
-                      <div style="width:65%; background:var(--accent-amber); height:100%;"></div>
-                    </div>
-                    <span style="font-size:11px; color:var(--accent-amber); font-family:var(--font-mono);">65%</span>
-                  </div>
-                </td>
-                <td style="padding:10px; color:var(--fg-muted); font-family:var(--font-mono);">03m 42s</td>
+            <tbody id="overview-queue-body">
+              <tr>
+                <td colspan="5" style="padding:16px 10px; color:var(--fg-muted); text-align:center;">加载中…</td>
               </tr>
             </tbody>
           </table>

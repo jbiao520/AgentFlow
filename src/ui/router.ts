@@ -52,6 +52,9 @@ export function showView(id: ViewId): void {
     content.scrollTop = 0;
   }
 
+  if (id === "overview") {
+    void import("./overview/page").then((m) => m.refreshOverview());
+  }
   if (id === "agents") {
     void import("./agents/matrix").then((m) => m.refreshAgentMatrix());
   }

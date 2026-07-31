@@ -12,6 +12,7 @@ use commands::agents::{
 use commands::cli::{list_cli_engine_status, probe_cli_engines};
 use commands::db::db_health;
 use commands::orchestrate::{orchestrate, orchestrate_from_json};
+use commands::overview::{get_overview_stats, get_overview_topology, list_running_queue};
 use commands::sandbox::{sandbox_cancel, sandbox_run};
 use commands::settings::{get_orchestrator_settings, update_orchestrator_settings};
 use commands::system::{app_info, ping, reveal_in_finder};
@@ -56,6 +57,9 @@ pub fn run() {
             sandbox_cancel,
             orchestrate,
             orchestrate_from_json,
+            get_overview_stats,
+            get_overview_topology,
+            list_running_queue,
             create_goal,
             save_plan,
             create_task_run,
