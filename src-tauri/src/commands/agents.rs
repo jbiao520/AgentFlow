@@ -4,6 +4,9 @@ use crate::repo::{
     upsert_agent as repo_upsert_agent, upsert_agent_profile as repo_upsert_profile,
     upsert_skills_many, Agent, AgentModelProfile, AgentUpsert, Skill, SkillUpsert,
 };
+use crate::services::import_agent::{
+    import_agent as service_import_agent, ImportAgentRequest, ImportAgentResult,
+};
 use crate::state::DbState;
 use tauri::State;
 
@@ -21,6 +24,27 @@ where
 #[tauri::command]
 pub fn list_agents(state: State<'_, DbState>) -> Result<Vec<Agent>, String> {
     with_db(&state, repo_list_agents)
+}
+
+#[tauri::command]
+pub fn import_agent(
+    state: State<'_, DbState>,
+    name: String,
+    workspace_path_or_git: String,
+    default_cli: String,
+    description: Option<String>,
+) -> Result<ImportAgentResult, String> {
+    with_db(&state, |c| {
+        service_import_agent(
+            c,
+            ImportAgentRequest {
+                name,
+                workspace_path_or_git,
+                default_cli,
+                description,
+            },
+        )
+    })
 }
 
 #[tauri::command]

@@ -1,11 +1,12 @@
 mod commands;
 mod db;
 mod repo;
+mod services;
 mod state;
 
 use commands::agents::{
-    delete_agent, get_agent_profile, list_agents, list_skills, set_skill_enabled, upsert_agent,
-    upsert_agent_profile, upsert_skills,
+    delete_agent, get_agent_profile, import_agent, list_agents, list_skills, set_skill_enabled,
+    upsert_agent, upsert_agent_profile, upsert_skills,
 };
 use commands::db::db_health;
 use commands::settings::{get_orchestrator_settings, update_orchestrator_settings};
@@ -30,6 +31,7 @@ pub fn run() {
             reveal_in_finder,
             db_health,
             list_agents,
+            import_agent,
             upsert_agent,
             delete_agent,
             get_agent_profile,

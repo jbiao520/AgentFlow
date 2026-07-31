@@ -284,151 +284,7 @@
 
         <!-- Agent Grid Cards -->
         <div class="agent-grid" id="agent-grid" data-od-id="agent-grid">
-          <!-- Card 1 -->
-          <div class="agent-card" data-agent-name="web-browser-ops" data-status="working" data-cli="cursor-agent" onclick="selectAgent('web-browser-ops')" tabindex="0" role="button" aria-label="查看 Agent web-browser-ops 详情">
-            <div class="agent-card-header">
-              <div class="agent-avatar-badge">WO</div>
-              <div class="agent-status-badge badge-working">
-                <div class="status-dot working"></div>Working
-              </div>
-            </div>
-            <div class="agent-name">web-browser-ops</div>
-            <div class="agent-repo">github.com/user/web-ops-scripts</div>
-            <p style="font-size:12px; color:var(--fg-muted); margin-bottom:10px; line-height:1.4;">
-              网页自动化与 Playwright 驱动 Agent，负责网站自动签到、登录表单与跨平台页面交互。
-            </p>
-            <div class="agent-skills-tags">
-              <span class="skill-tag">playwright-crawler</span>
-              <span class="skill-tag">form-auto-fill</span>
-              <span class="skill-tag">cookie-keeper</span>
-            </div>
-            <div class="agent-footer">
-              <span>CLI: cursor-agent</span>
-              <span class="agent-model-pill">claude-3.7-sonnet</span>
-            </div>
-          </div>
-
-          <!-- Card 2 -->
-          <div class="agent-card" data-agent-name="research-collector" data-status="working" data-cli="codex" onclick="selectAgent('research-collector')" tabindex="0" role="button" aria-label="查看 Agent research-collector 详情">
-            <div class="agent-card-header">
-              <div class="agent-avatar-badge">RC</div>
-              <div class="agent-status-badge badge-working">
-                <div class="status-dot working"></div>Working
-              </div>
-            </div>
-            <div class="agent-name">research-collector</div>
-            <div class="agent-repo">github.com/user/market-intel-hub</div>
-            <p style="font-size:12px; color:var(--fg-muted); margin-bottom:10px; line-height:1.4;">
-              全网情报采集与分析 Agent，监控竞品价格/新闻/热点，自动提炼 Markdown 简报。
-            </p>
-            <div class="agent-skills-tags">
-              <span class="skill-tag">web-search-extract</span>
-              <span class="skill-tag">llm-summarizer</span>
-              <span class="skill-tag">notion-sync</span>
-            </div>
-            <div class="agent-footer">
-              <span>CLI: codex</span>
-              <span class="agent-model-pill">sol / medium reasoning</span>
-            </div>
-          </div>
-
-          <!-- Card 3 -->
-          <div class="agent-card" data-agent-name="qa-regression-bot" data-status="idle" data-cli="cursor-agent" onclick="selectAgent('qa-regression-bot')" tabindex="0" role="button" aria-label="查看 Agent qa-regression-bot 详情">
-            <div class="agent-card-header">
-              <div class="agent-avatar-badge">QA</div>
-              <div class="agent-status-badge badge-idle">
-                <div class="status-dot"></div>Idle
-              </div>
-            </div>
-            <div class="agent-name">qa-regression-bot</div>
-            <div class="agent-repo">github.com/user/site-inspector-suite</div>
-            <p style="font-size:12px; color:var(--fg-muted); margin-bottom:10px; line-height:1.4;">
-              自动化巡检与 UI 测试 Agent，对自营网站执行断链检测、性能与可用性测试、异常报警。
-            </p>
-            <div class="agent-skills-tags">
-              <span class="skill-tag">visual-diff-check</span>
-              <span class="skill-tag">lighthouse-audit</span>
-              <span class="skill-tag">webhook-alert</span>
-            </div>
-            <div class="agent-footer">
-              <span>CLI: cursor-agent</span>
-              <span class="agent-model-pill">fast-runner</span>
-            </div>
-          </div>
-
-          <!-- Card 4 -->
-          <div class="agent-card" data-agent-name="social-media-manager" data-status="idle" data-cli="opencode" onclick="selectAgent('social-media-manager')" tabindex="0" role="button" aria-label="查看 Agent social-media-manager 详情">
-            <div class="agent-card-header">
-              <div class="agent-avatar-badge">SM</div>
-              <div class="agent-status-badge badge-idle">
-                <div class="status-dot"></div>Idle
-              </div>
-            </div>
-            <div class="agent-name">social-media-manager</div>
-            <div class="agent-repo">github.com/user/content-ops-studio</div>
-            <p style="font-size:12px; color:var(--fg-muted); margin-bottom:10px; line-height:1.4;">
-              跨平台内容运营与排版 Agent，公众号/小红书/Twitter 内容转化、格式美化与定时发布。
-            </p>
-            <div class="agent-skills-tags">
-              <span class="skill-tag">markdown-poster</span>
-              <span class="skill-tag">auto-publisher</span>
-              <span class="skill-tag">seo-tagger</span>
-            </div>
-            <div class="agent-footer">
-              <span>CLI: opencode</span>
-              <span class="agent-model-pill">gpt-4o-latest</span>
-            </div>
-          </div>
-
-          <!-- Card 5 -->
-          <div class="agent-card" data-agent-name="data-cleaner-sync" data-status="idle" data-cli="codex" onclick="selectAgent('data-cleaner-sync')" tabindex="0" role="button" aria-label="查看 Agent data-cleaner-sync 详情">
-            <div class="agent-card-header">
-              <div class="agent-avatar-badge">DC</div>
-              <div class="agent-status-badge badge-idle">
-                <div class="status-dot"></div>Idle
-              </div>
-            </div>
-            <div class="agent-name">data-cleaner-sync</div>
-            <div class="agent-repo">github.com/user/personal-data-pipeline</div>
-            <p style="font-size:12px; color:var(--fg-muted); margin-bottom:10px; line-height:1.4;">
-              文档表格解析与同步 Agent，PDF/发票 OCR 提取、Excel/CSV 数据清洗与飞书多维表格同步。
-            </p>
-            <div class="agent-skills-tags">
-              <span class="skill-tag">pdf-invoice-ocr</span>
-              <span class="skill-tag">csv-duckdb-transform</span>
-              <span class="skill-tag">feishu-sync</span>
-            </div>
-            <div class="agent-footer">
-              <span>CLI: codex</span>
-              <span class="agent-model-pill">terra / high reasoning</span>
-            </div>
-          </div>
-
-          <!-- Card 6 -->
-          <div class="agent-card" data-agent-name="workflow-orchestrator" data-status="idle" data-cli="opencode" onclick="selectAgent('workflow-orchestrator')" tabindex="0" role="button" aria-label="查看 Agent workflow-orchestrator 详情">
-            <div class="agent-card-header">
-              <div class="agent-avatar-badge">WF</div>
-              <div class="agent-status-badge badge-idle">
-                <div class="status-dot"></div>Idle
-              </div>
-            </div>
-            <div class="agent-name">workflow-orchestrator</div>
-            <div class="agent-repo">github.com/user/automation-center</div>
-            <p style="font-size:12px; color:var(--fg-muted); margin-bottom:10px; line-height:1.4;">
-              工作流定时调度 Agent，定时任务 Cron 触发、Webhook 接收与飞书/钉钉机器人通知。
-            </p>
-            <div class="agent-skills-tags">
-              <span class="skill-tag">cron-scheduler</span>
-              <span class="skill-tag">feishu-notifier</span>
-            </div>
-            <div class="agent-footer">
-              <span>CLI: opencode</span>
-              <span class="agent-model-pill">gpt-4o-latest</span>
-            </div>
-          </div>
-
-          <!-- Empty State -->
-          <div id="agent-empty-state" class="empty-state" style="display:none;">
+          <div id="agent-empty-state" class="empty-state" style="display:flex;">
             <div style="font-weight:600; font-size:14px; margin-bottom:4px; color:var(--fg-primary);">未找到匹配的 Agent 工作区</div>
             <div style="font-size:12px; color:var(--fg-muted);">请尝试调整搜索关键词或重置筛选条件，或通过右上角按钮新建导入。</div>
           </div>
@@ -889,26 +745,31 @@
 
     <div class="form-group">
       <label class="form-label">Agent 标识名称</label>
-      <input type="text" class="form-input" placeholder="例如: web-browser-ops" />
+      <input type="text" id="import-agent-name" class="form-input" placeholder="例如: web-browser-ops" />
     </div>
 
     <div class="form-group">
       <label class="form-label">工作区 Workspace 路径 / Git URL</label>
-      <input type="text" class="form-input" placeholder="/Users/user/workspaces/web-ops-scripts" />
+      <input type="text" id="import-agent-path" class="form-input" placeholder="/Users/user/workspaces/web-ops-scripts" />
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">描述（可选）</label>
+      <input type="text" id="import-agent-desc" class="form-input" placeholder="一句话说明职责" />
     </div>
 
     <div class="form-group">
       <label class="form-label">默认 CLI 执行引擎</label>
-      <select class="form-select">
-        <option>Cursor Agent CLI (playwright engine)</option>
-        <option>Codex CLI</option>
-        <option>OpenCode CLI</option>
+      <select id="import-agent-cli" class="form-select">
+        <option value="cursor-agent">Cursor Agent CLI (playwright engine)</option>
+        <option value="codex">Codex CLI</option>
+        <option value="opencode">OpenCode CLI</option>
       </select>
     </div>
 
     <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
       <button class="btn btn-secondary" onclick="closeImportModal()">取消</button>
-      <button class="btn btn-primary" onclick="submitImportModal()">完成导入并感知 Skill</button>
+      <button class="btn btn-primary" id="import-agent-submit" onclick="submitImportModal()">完成导入并感知 Skill</button>
     </div>
   </div>
 </div>

@@ -1,4 +1,5 @@
 import shellHtml from "./ui/app-shell.html?raw";
+import { initAgentMatrix } from "./ui/agents/matrix";
 import { initAppInfo } from "./ui/app-info";
 import { initDemoActions } from "./ui/demo-actions";
 import { bindModals } from "./ui/modals";
@@ -13,6 +14,7 @@ function mountApp(): void {
   bindNav();
   bindModals();
   initDemoActions();
+  initAgentMatrix();
   void initAppInfo();
 }
 

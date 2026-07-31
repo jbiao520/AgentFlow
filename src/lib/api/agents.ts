@@ -59,9 +59,44 @@ export type SkillUpsert = {
   content_hash?: string | null;
 };
 
+export type ImportAgentResult = {
+  agent: Agent;
+  cloned: boolean;
+  workspace_path: string;
+};
+
 export async function listAgents(): Promise<Agent[]> {
   if (!isTauri()) return [];
   return invoke<Agent[]>("list_agents");
+}
+
+export async function importAgent(input: {
+  name: string;
+  workspace_path_or_git: string;
+  default_cli: string;
+  description?: string | null;
+}): Promise<ImportAgentResult> {
+  if (!isTauri()) {
+    const now = new Date().toISOString();
+    const agent: Agent = {
+      id: "browser-mock-agent",
+      name: input.name,
+      description: input.description ?? null,
+      workspace_path: input.workspace_path_or_git,
+      git_url: null,
+      default_cli: input.default_cli,
+      status: "idle",
+      created_at: now,
+      updated_at: now,
+    };
+    return { agent, cloned: false, workspace_path: input.workspace_path_or_git };
+  }
+  return invoke<ImportAgentResult>("import_agent", {
+    name: input.name,
+    workspacePathOrGit: input.workspace_path_or_git,
+    defaultCli: input.default_cli,
+    description: input.description ?? null,
+  });
 }
 
 export async function upsertAgent(agent: AgentUpsert): Promise<Agent> {

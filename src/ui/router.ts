@@ -1,3 +1,12 @@
+import type { Agent } from "../lib/api/agents";
+import { getAgentProfile, listAgents } from "../lib/api/agents";
+import {
+  findCachedAgent,
+  getSelectedAgentId,
+  setSelectedAgentId,
+} from "./agents/state";
+import { showToast } from "./toast";
+
 export type ViewId =
   | "overview"
   | "agents"
@@ -12,6 +21,8 @@ const VIEW_IDS: readonly ViewId[] = [
   "commander",
   "tasks",
 ] as const;
+
+export { getSelectedAgentId };
 
 export function isViewId(value: string): value is ViewId {
   return (VIEW_IDS as readonly string[]).includes(value);
@@ -40,15 +51,64 @@ export function showView(id: ViewId): void {
   if (content) {
     content.scrollTop = 0;
   }
+
+  if (id === "agents") {
+    void import("./agents/matrix").then((m) => m.refreshAgentMatrix());
+  }
 }
 
-/** Mock agent select → detail header + agent-detail view. */
-export function selectAgent(agentName: string): void {
+async function resolveAgent(idOrName: string): Promise<Agent | null> {
+  let agent = findCachedAgent(idOrName);
+  if (agent) return agent;
+  try {
+    const list = await listAgents();
+    return (
+      list.find((a) => a.id === idOrName) ||
+      list.find((a) => a.name === idOrName) ||
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+function applyDetailHeader(agent: Agent): void {
   const nameEl = document.getElementById("detail-agent-name");
   const repoEl = document.getElementById("detail-agent-repo");
-  if (nameEl) nameEl.textContent = agentName;
+  const statusEl = document.getElementById("detail-agent-status");
+  if (nameEl) nameEl.textContent = agent.name;
   if (repoEl) {
-    repoEl.textContent = `绑定工作区: github.com/user/${agentName} · 分支: main`;
+    const loc = agent.git_url || agent.workspace_path;
+    repoEl.textContent = `绑定工作区: ${loc}`;
+  }
+  if (statusEl) {
+    const working =
+      agent.status.toLowerCase() === "working" ||
+      agent.status.toLowerCase() === "running";
+    statusEl.textContent = working ? "Working" : "Idle";
+    statusEl.className = `agent-status-badge ${working ? "badge-working" : "badge-idle"}`;
+  }
+}
+
+/** Select agent by id (preferred) or name → detail view. */
+export async function selectAgentById(idOrName: string): Promise<void> {
+  const agent = await resolveAgent(idOrName);
+  if (!agent) {
+    showToast(`未找到 Agent: ${idOrName}`);
+    return;
+  }
+  setSelectedAgentId(agent.id);
+  applyDetailHeader(agent);
+  try {
+    await getAgentProfile(agent.id);
+  } catch {
+    /* profile optional until 03-03 */
   }
   showView("agent-detail");
+  showToast(`已载入 Agent [${agent.name}] 的全量配置`);
+}
+
+/** Back-compat for prototype onclick handlers that pass a name. */
+export function selectAgent(agentName: string): void {
+  void selectAgentById(agentName);
 }

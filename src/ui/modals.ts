@@ -1,5 +1,5 @@
+import { submitImportModal as runImportSubmit } from "./agents/import-modal";
 import { showView } from "./router";
-import { showToast } from "./toast";
 
 function isOverlayClick(event: Event | undefined, overlayId: string): boolean {
   if (!event) return true;
@@ -41,6 +41,8 @@ export function openImportModal(): void {
   if (!modal) return;
   modal.classList.add("active");
   modal.setAttribute("aria-hidden", "false");
+  const nameInput = document.getElementById("import-agent-name");
+  if (nameInput instanceof HTMLInputElement) nameInput.focus();
 }
 
 export function closeImportModal(event?: Event): void {
@@ -52,8 +54,7 @@ export function closeImportModal(event?: Event): void {
 }
 
 export function submitImportModal(): void {
-  showToast("成功接入新 Agent 工作区！自动完成 3 个技能感知。");
-  closeImportModal();
+  void runImportSubmit();
 }
 
 export function openSkillDetailModal(filename: string, desc: string): void {
@@ -99,7 +100,6 @@ export function bindModals(): void {
     .querySelector("#skill-modal .modal-card")
     ?.addEventListener("click", (e) => e.stopPropagation());
 
-  // Cmd+K quick-nav items
   document.querySelectorAll("#cmdk-modal .nav-item[data-cmdk-view]").forEach((item) => {
     item.addEventListener("click", () => {
       const view = item.getAttribute("data-cmdk-view");

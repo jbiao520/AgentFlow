@@ -1,4 +1,5 @@
 import { selectAgent, showView } from "./router";
+import { filterAgents } from "./agents/matrix";
 import {
   closeCmdKModal,
   closeImportModal,
@@ -15,47 +16,6 @@ import { showToast } from "./toast";
 export function initDemoActions(): void {
   let isStreamActive = true;
   let streamInterval: number | null = null;
-
-  function filterAgents(): void {
-    const searchVal = (
-      document.getElementById("agent-search-input") as HTMLInputElement | null
-    )?.value
-      .toLowerCase()
-      .trim() || "";
-    const statusVal =
-      (document.getElementById("agent-status-filter") as HTMLSelectElement | null)
-        ?.value || "all";
-    const cliVal =
-      (document.getElementById("agent-cli-filter") as HTMLSelectElement | null)
-        ?.value || "all";
-
-    const cards = document.querySelectorAll(".agent-card");
-    let visibleCount = 0;
-
-    cards.forEach((card) => {
-      const name = (card.getAttribute("data-agent-name") || "").toLowerCase();
-      const status = card.getAttribute("data-status") || "";
-      const cli = card.getAttribute("data-cli") || "";
-      const content = (card.textContent || "").toLowerCase();
-
-      const matchesSearch =
-        !searchVal || name.includes(searchVal) || content.includes(searchVal);
-      const matchesStatus = statusVal === "all" || status === statusVal;
-      const matchesCli = cliVal === "all" || cli === cliVal;
-
-      if (matchesSearch && matchesStatus && matchesCli) {
-        (card as HTMLElement).style.display = "block";
-        visibleCount++;
-      } else {
-        (card as HTMLElement).style.display = "none";
-      }
-    });
-
-    const emptyState = document.getElementById("agent-empty-state");
-    if (emptyState) {
-      emptyState.style.display = visibleCount === 0 ? "flex" : "none";
-    }
-  }
 
   function setReasoning(pillElement: HTMLElement): void {
     const parent = pillElement.parentElement;
@@ -240,7 +200,6 @@ export function initDemoActions(): void {
     },
     selectAgent: (name: string) => {
       selectAgent(name);
-      showToast(`已载入 Agent [${name}] 的全量配置`);
     },
     filterAgents,
     setReasoning,
@@ -273,6 +232,7 @@ declare global {
     showToast: typeof showToast;
     switchView: (viewId: string, nav?: Element | null) => void;
     selectAgent: (name: string) => void;
+    filterAgents: () => void;
     openCmdKModal: () => void;
     closeCmdKModal: (event?: Event) => void;
     openImportModal: () => void;
