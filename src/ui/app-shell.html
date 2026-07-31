@@ -305,7 +305,7 @@
           </div>
           <div style="display:flex; gap:8px;">
             <button class="btn btn-secondary" id="btn-sync-skills">同步 Workspace Skill</button>
-            <button class="btn btn-primary" onclick="showToast('Agent 参数与模型路由配置已保存！')">保存 Agent 配置</button>
+            <button class="btn btn-primary" id="btn-save-agent-config">保存 Agent 配置</button>
           </div>
         </div>
 
@@ -317,36 +317,41 @@
             </h3>
 
             <div class="form-group">
+              <label class="form-label">职责描述</label>
+              <input type="text" class="form-input" id="detail-agent-description" data-field="description" placeholder="一句话说明 Agent 职责" />
+            </div>
+
+            <div class="form-group">
               <label class="form-label">底层 CLI 执行引擎</label>
-              <select class="form-select" id="engine-select">
-                <option selected>Cursor Agent CLI (playwright mode)</option>
-                <option>Codex CLI (data reasoning)</option>
-                <option>OpenCode CLI (api/bot)</option>
+              <select class="form-select" id="detail-cli-select" data-field="default_cli">
+                <option value="cursor-agent">Cursor Agent CLI (playwright mode)</option>
+                <option value="codex">Codex CLI (data reasoning)</option>
+                <option value="opencode">OpenCode CLI (api/bot)</option>
               </select>
             </div>
 
             <div class="form-group">
               <label class="form-label">指定模型 (Preferred Model)</label>
-              <select class="form-select">
-                <option selected>claude-3.7-sonnet (Vision & DOM)</option>
-                <option>gpt-5.6-terra (Codex Reasoning)</option>
-                <option>gpt-4o-latest</option>
+              <select class="form-select" id="detail-model-select" data-field="preferred_model">
+                <option value="claude-3.7-sonnet">claude-3.7-sonnet (Vision &amp; DOM)</option>
+                <option value="gpt-5.6-terra">gpt-5.6-terra (Codex Reasoning)</option>
+                <option value="gpt-4o-latest">gpt-4o-latest</option>
               </select>
             </div>
 
             <div class="form-group">
               <label class="form-label">Reasoning Effort (推理深度)</label>
-              <div class="reasoning-pills">
-                <div class="reasoning-pill" onclick="setReasoning(this)">Low</div>
-                <div class="reasoning-pill active" onclick="setReasoning(this)">Medium</div>
-                <div class="reasoning-pill" onclick="setReasoning(this)">High</div>
+              <div class="reasoning-pills" id="detail-reasoning-pills" data-field="reasoning_effort">
+                <div class="reasoning-pill" data-reasoning="low">Low</div>
+                <div class="reasoning-pill active" data-reasoning="medium">Medium</div>
+                <div class="reasoning-pill" data-reasoning="high">High</div>
               </div>
             </div>
 
             <div class="form-group">
               <label class="form-label">Temperature (随机温度)</label>
               <div class="range-group">
-                <input type="range" min="0" max="1" step="0.05" value="0.2" class="range-input" oninput="document.getElementById('temp-val').textContent = this.value" />
+                <input type="range" min="0" max="1" step="0.05" value="0.2" class="range-input" id="detail-temperature" data-field="temperature" />
                 <span class="range-val" id="temp-val">0.2</span>
               </div>
             </div>
@@ -355,7 +360,7 @@
               <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
                 <label class="form-label" style="margin-bottom:0;">自动按任务路由</label>
                 <label class="switch">
-                  <input type="checkbox" checked>
+                  <input type="checkbox" id="detail-auto-route" data-field="auto_route" checked>
                   <span class="slider"></span>
                 </label>
               </div>
@@ -364,9 +369,9 @@
 
             <div class="form-group">
               <label class="form-label">Playwright 浏览器模式</label>
-              <select class="form-select">
-                <option selected>Headless (无头模式)</option>
-                <option>Headed (界面调试模式)</option>
+              <select class="form-select" id="detail-playwright-mode" data-field="playwright_mode">
+                <option value="headless">Headless (无头模式)</option>
+                <option value="headed">Headed (界面调试模式)</option>
               </select>
             </div>
           </div>

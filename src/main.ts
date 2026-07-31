@@ -1,4 +1,5 @@
 import shellHtml from "./ui/app-shell.html?raw";
+import { initDetailConfig } from "./ui/agents/detail-config";
 import { initDetailSkills } from "./ui/agents/detail-skills";
 import { initAgentMatrix } from "./ui/agents/matrix";
 import { initAppInfo } from "./ui/app-info";
@@ -17,6 +18,7 @@ function mountApp(): void {
   initDemoActions();
   initAgentMatrix();
   initDetailSkills();
+  initDetailConfig();
   void initAppInfo();
 }
 

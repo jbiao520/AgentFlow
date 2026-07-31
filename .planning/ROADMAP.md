@@ -4,13 +4,13 @@
 
 从 HTML 原型落地为 macOS Tauri App：先搭壳与持久化，再接通 Agent/Skill 与 CLI 运行时，随后实现可配置调度中枢与 DAG 任务闭环，最后补齐总览拓扑与打包打磨，达到「原型 5 页全可用 + SQLite 可重启」的 v1.0。
 
-**Planning status:** 全部 6 个 Phase、共 **18** 份可执行 `PLAN.md` 已就绪（Phase 1–2 完成）.
+**Planning status:** 全部 6 个 Phase、共 **18** 份可执行 `PLAN.md` 已就绪（Phase 1–3 完成）.
 
 ## Phases
 
 - [x] **Phase 1: Foundation** - Tauri 工程、原型迁入、路由与 IPC 骨架
 - [x] **Phase 2: Persistence** - SQLite 模型、迁移与 Repository
-- [ ] **Phase 3: Agent & Skill** - 导入工作区、Skill 扫描、矩阵/详情接真数据
+- [x] **Phase 3: Agent & Skill** - 导入工作区、Skill 扫描、矩阵/详情接真数据
 - [ ] **Phase 4: CLI Runtime** - 三引擎适配、沙盒执行、日志流
 - [ ] **Phase 5: Orchestrator** - 独立编排配置、Plan/Dispatch、DAG 执行与重试
 - [ ] **Phase 6: Overview & Polish** - 总览聚合、拓扑、Cmd+K、macOS 打包验收
@@ -43,9 +43,9 @@ Plans:
 **Plans**: 3
 
 Plans:
-- [ ] 03-01: Agent 导入（本地/Git）+ 矩阵 UI — [03-01-PLAN.md](phases/03-agent-skill/03-01-PLAN.md)
-- [ ] 03-02: Skill 扫描/同步/开关/预览 — [03-02-PLAN.md](phases/03-agent-skill/03-02-PLAN.md)
-- [ ] 03-03: Agent 详情模型配置持久化 — [03-03-PLAN.md](phases/03-agent-skill/03-03-PLAN.md)
+- [x] 03-01: Agent 导入（本地/Git）+ 矩阵 UI — [03-01-PLAN.md](phases/03-agent-skill/03-01-PLAN.md)
+- [x] 03-02: Skill 扫描/同步/开关/预览 — [03-02-PLAN.md](phases/03-agent-skill/03-02-PLAN.md)
+- [x] 03-03: Agent 详情模型配置持久化 — [03-03-PLAN.md](phases/03-agent-skill/03-03-PLAN.md)
 
 ### Phase 4: CLI Runtime
 **Goal**: 本机探测三引擎；单 Agent 沙盒可真实跑 CLI 并流式日志  
@@ -83,7 +83,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | 2026-07-31 |
 | 2. Persistence | 3/3 | Complete | 2026-07-31 |
-| 3. Agent & Skill | 0/3 | Not started | - |
+| 3. Agent & Skill | 3/3 | Complete | 2026-07-31 |
 | 4. CLI Runtime | 0/3 | Not started | - |
 | 5. Orchestrator | 0/3 | Not started | - |
 | 6. Overview & Polish | 0/3 | Not started | - |
