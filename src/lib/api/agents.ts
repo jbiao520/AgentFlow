@@ -166,3 +166,27 @@ export async function setSkillEnabled(
   }
   return invoke<Skill>("set_skill_enabled", { id, enabled });
 }
+
+export type SyncSkillsResult = {
+  added: number;
+  updated: number;
+  removed: number;
+};
+
+export async function syncAgentSkills(
+  agentId: string,
+): Promise<SyncSkillsResult> {
+  if (!isTauri()) return { added: 0, updated: 0, removed: 0 };
+  return invoke<SyncSkillsResult>("sync_agent_skills", { agentId });
+}
+
+export async function readSkillContent(
+  agentId: string,
+  relativePath: string,
+): Promise<string> {
+  if (!isTauri()) return `# ${relativePath}\n\n(browser mock)`;
+  return invoke<string>("read_skill_content", {
+    agentId,
+    relativePath,
+  });
+}

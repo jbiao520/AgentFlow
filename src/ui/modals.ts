@@ -57,11 +57,19 @@ export function submitImportModal(): void {
   void runImportSubmit();
 }
 
-export function openSkillDetailModal(filename: string, desc: string): void {
+export function openSkillDetailModal(
+  filename: string,
+  desc: string,
+  bodyHtmlOrText?: string,
+): void {
   const nameEl = document.getElementById("skill-modal-filename");
   const descEl = document.getElementById("skill-modal-desc");
+  const bodyEl = document.getElementById("skill-modal-body");
   if (nameEl) nameEl.textContent = filename;
   if (descEl) descEl.textContent = desc;
+  if (bodyEl && bodyHtmlOrText !== undefined) {
+    bodyEl.textContent = bodyHtmlOrText;
+  }
   document.getElementById("skill-modal")?.classList.add("active");
 }
 

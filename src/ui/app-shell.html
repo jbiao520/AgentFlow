@@ -304,7 +304,7 @@
             <p class="page-desc" id="detail-agent-repo">绑定工作区: github.com/user/web-ops-scripts · 分支: main</p>
           </div>
           <div style="display:flex; gap:8px;">
-            <button class="btn btn-secondary" onclick="showToast('已重新扫描工作区 .agent/skills/ 目录！发现 4 个 Skill。')">同步 Workspace Skill</button>
+            <button class="btn btn-secondary" id="btn-sync-skills">同步 Workspace Skill</button>
             <button class="btn btn-primary" onclick="showToast('Agent 参数与模型路由配置已保存！')">保存 Agent 配置</button>
           </div>
         </div>
@@ -379,60 +379,8 @@
                 <span style="font-size:11px; color:var(--fg-muted); font-family:var(--font-mono);">.agent/skills/</span>
               </div>
 
-              <div class="skill-item-row" onclick="openSkillDetailModal('playwright-crawler.md', '启动 Headless Chromium，自动导航、绕过悬浮弹窗并抓取指定 DOM 结构。')">
-                <div class="skill-info">
-                  <div class="skill-title">
-                    <span>playwright-crawler.md</span>
-                    <span style="font-size:10px; color:var(--accent-primary); background:rgba(37,99,235,0.08); padding:1px 5px; border-radius:3px;">点击预览</span>
-                  </div>
-                  <div class="skill-desc">启动 Headless Chromium，自动导航、绕过悬浮弹窗并抓取指定 DOM 结构。</div>
-                </div>
-                <label class="switch" onclick="event.stopPropagation()">
-                  <input type="checkbox" checked>
-                  <span class="slider"></span>
-                </label>
-              </div>
-
-              <div class="skill-item-row" onclick="openSkillDetailModal('form-auto-fill.md', '识别 Web 表单字段，实现自动化登录与表单数据提交。')">
-                <div class="skill-info">
-                  <div class="skill-title">
-                    <span>form-auto-fill.md</span>
-                    <span style="font-size:10px; color:var(--accent-primary); background:rgba(37,99,235,0.08); padding:1px 5px; border-radius:3px;">点击预览</span>
-                  </div>
-                  <div class="skill-desc">识别 Web 表单字段，实现自动化登录与表单数据提交。</div>
-                </div>
-                <label class="switch" onclick="event.stopPropagation()">
-                  <input type="checkbox" checked>
-                  <span class="slider"></span>
-                </label>
-              </div>
-
-              <div class="skill-item-row" onclick="openSkillDetailModal('session-cookie-keeper.md', '持久化保存并恢复 Cookie 与 LocalStorage，维持登录 Session。')">
-                <div class="skill-info">
-                  <div class="skill-title">
-                    <span>session-cookie-keeper.md</span>
-                    <span style="font-size:10px; color:var(--accent-primary); background:rgba(37,99,235,0.08); padding:1px 5px; border-radius:3px;">点击预览</span>
-                  </div>
-                  <div class="skill-desc">持久化保存并恢复 Cookie 与 LocalStorage，维持登录 Session。</div>
-                </div>
-                <label class="switch" onclick="event.stopPropagation()">
-                  <input type="checkbox" checked>
-                  <span class="slider"></span>
-                </label>
-              </div>
-
-              <div class="skill-item-row" onclick="openSkillDetailModal('captcha-solver.md', '检测图形验证码与滑动验证，结合视觉 LLM 进行识别重试。')">
-                <div class="skill-info">
-                  <div class="skill-title">
-                    <span>captcha-solver.md</span>
-                    <span style="font-size:10px; color:var(--accent-primary); background:rgba(37,99,235,0.08); padding:1px 5px; border-radius:3px;">点击预览</span>
-                  </div>
-                  <div class="skill-desc">检测图形验证码与滑动验证，结合视觉 LLM 进行识别重试。</div>
-                </div>
-                <label class="switch" onclick="event.stopPropagation()">
-                  <input type="checkbox">
-                  <span class="slider"></span>
-                </label>
+              <div id="agent-skill-list">
+                <div style="font-size:12px; color:var(--fg-muted); padding:8px 0;">请先从 Agent 矩阵选择一个 Agent。</div>
               </div>
             </div>
 
@@ -782,14 +730,7 @@
       <button class="btn btn-secondary btn-sm" onclick="closeSkillDetailModal()">关闭</button>
     </div>
     <div style="font-size:12px; color:var(--fg-muted); margin-bottom:12px;" id="skill-modal-desc">技能描述</div>
-    <div style="background:#0f172a; border-radius:var(--radius-md); padding:12px; font-family:var(--font-mono); font-size:11.5px; color:#f1f5f9; line-height:1.6; max-height:260px; overflow-y:auto;" id="skill-modal-body">
-      # Skill Definition<br/>
-      > Category: Playwright Web Automation<br/><br/>
-      ## Capabilities<br/>
-      1. Launch Headless Chromium browser via Cursor Agent CLI.<br/>
-      2. Handle page cookies, DOM element selection, and screenshot capture.<br/>
-      3. Return structured JSON payload for downstream LLM processing.
-    </div>
+    <div style="background:#0f172a; border-radius:var(--radius-md); padding:12px; font-family:var(--font-mono); font-size:11.5px; color:#f1f5f9; line-height:1.6; max-height:260px; overflow-y:auto; white-space:pre-wrap;" id="skill-modal-body"></div>
   </div>
 </div>
 

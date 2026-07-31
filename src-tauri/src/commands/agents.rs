@@ -7,6 +7,10 @@ use crate::repo::{
 use crate::services::import_agent::{
     import_agent as service_import_agent, ImportAgentRequest, ImportAgentResult,
 };
+use crate::services::skill_scan::{
+    read_skill_content as service_read_skill, sync_agent_skills as service_sync_skills,
+    SyncSkillsResult,
+};
 use crate::state::DbState;
 use tauri::State;
 
@@ -93,4 +97,21 @@ pub fn set_skill_enabled(
     enabled: bool,
 ) -> Result<Skill, String> {
     with_db(&state, |c| repo_set_skill(c, &id, enabled))
+}
+
+#[tauri::command]
+pub fn sync_agent_skills(
+    state: State<'_, DbState>,
+    agent_id: String,
+) -> Result<SyncSkillsResult, String> {
+    with_db(&state, |c| service_sync_skills(c, &agent_id))
+}
+
+#[tauri::command]
+pub fn read_skill_content(
+    state: State<'_, DbState>,
+    agent_id: String,
+    relative_path: String,
+) -> Result<String, String> {
+    with_db(&state, |c| service_read_skill(c, &agent_id, &relative_path))
 }

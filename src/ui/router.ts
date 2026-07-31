@@ -105,6 +105,7 @@ export async function selectAgentById(idOrName: string): Promise<void> {
     /* profile optional until 03-03 */
   }
   showView("agent-detail");
+  void import("./agents/detail-skills").then((m) => m.refreshAgentSkills(agent.id));
   showToast(`已载入 Agent [${agent.name}] 的全量配置`);
 }
 

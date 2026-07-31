@@ -1,5 +1,5 @@
 use crate::db::now_iso8601;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -157,6 +157,51 @@ pub fn set_skill_enabled(conn: &Connection, id: &str, enabled: bool) -> Result<S
             })
         },
     )
+    .map_err(|e| e.to_string())
+}
+
+/// Delete skills for an agent whose relative_path is not in `keep_paths`.
+pub fn delete_skills_missing_paths(
+    conn: &Connection,
+    agent_id: &str,
+    keep_paths: &[String],
+) -> Result<usize, String> {
+    let existing = list_skills_by_agent(conn, agent_id)?;
+    let mut removed = 0usize;
+    for skill in existing {
+        if !keep_paths.iter().any(|p| p == &skill.relative_path) {
+            conn.execute("DELETE FROM skills WHERE id = ?1", [&skill.id])
+                .map_err(|e| e.to_string())?;
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
+/// Fetch one skill by agent + relative path.
+pub fn get_skill_by_path(
+    conn: &Connection,
+    agent_id: &str,
+    relative_path: &str,
+) -> Result<Option<Skill>, String> {
+    conn.query_row(
+        "SELECT id, agent_id, relative_path, title, description, enabled, content_hash, scanned_at
+         FROM skills WHERE agent_id = ?1 AND relative_path = ?2",
+        params![agent_id, relative_path],
+        |row| {
+            Ok(Skill {
+                id: row.get(0)?,
+                agent_id: row.get(1)?,
+                relative_path: row.get(2)?,
+                title: row.get(3)?,
+                description: row.get(4)?,
+                enabled: row.get::<_, i64>(5)? != 0,
+                content_hash: row.get(6)?,
+                scanned_at: row.get(7)?,
+            })
+        },
+    )
+    .optional()
     .map_err(|e| e.to_string())
 }
 
