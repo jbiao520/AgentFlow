@@ -18,12 +18,12 @@
 ### Phase 1: Foundation
 **Goal**: 可 `tauri dev` 打开对齐原型的壳，页面可切换，前后端 IPC 打通 hello-path  
 **Depends on**: Nothing  
-**Plans**: TBD（建议 3）
+**Plans**: 3
 
 Plans:
-- [ ] 01-01: 初始化 Tauri 2 + 前端工程，迁入原型样式与五视图结构
-- [ ] 01-02: 实现视图路由/侧栏状态，去掉纯装饰死交互中的硬编码入口混乱
-- [ ] 01-03: 建立 Tauri commands 约定与前端 API 层（ping / 读版本 / 打开路径）
+- [x] 01-01: 初始化 Tauri 2 + vanilla-ts，迁入原型样式与五视图结构 — `.planning/phases/01-foundation/01-01-PLAN.md`
+- [ ] 01-02: 类型化视图路由 + Cmd+K/导入/Skill 弹窗 — `.planning/phases/01-foundation/01-02-PLAN.md`
+- [ ] 01-03: Tauri commands（ping / app_info / reveal_in_finder）+ 前端 API 层 — `.planning/phases/01-foundation/01-03-PLAN.md`
 
 ### Phase 2: Persistence
 **Goal**: Agent / Skill / Orchestrator / Task 相关表可读写，App 重启数据仍在  
@@ -79,7 +79,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/? | Not started | - |
+| 1. Foundation | 1/3 | In progress | - |
 | 2. Persistence | 0/? | Not started | - |
 | 3. Agent & Skill | 0/? | Not started | - |
 | 4. CLI Runtime | 0/? | Not started | - |
