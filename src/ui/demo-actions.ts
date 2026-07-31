@@ -1,5 +1,6 @@
 import { selectAgent, showView } from "./router";
 import { filterAgents } from "./agents/matrix";
+import { runSandboxTest as runSandboxTestReal } from "./agents/sandbox";
 import {
   closeCmdKModal,
   closeImportModal,
@@ -12,7 +13,7 @@ import {
 } from "./modals";
 import { showToast } from "./toast";
 
-/** Remaining prototype demos (sandbox, logs, commander) — not persistence. */
+/** Remaining prototype demos (logs, commander). Sandbox uses real CLI (Phase 4). */
 export function initDemoActions(): void {
   let isStreamActive = true;
   let streamInterval: number | null = null;
@@ -62,24 +63,7 @@ export function initDemoActions(): void {
   }
 
   function runSandboxTest(): void {
-    const term = document.getElementById("sandbox-term");
-    const promptEl = document.getElementById(
-      "sandbox-prompt",
-    ) as HTMLInputElement | null;
-    if (!term || !promptEl) return;
-    const time = new Date().toTimeString().split(" ")[0];
-    const newLine = document.createElement("div");
-    newLine.className = "log-line";
-    newLine.innerHTML = `<span class="log-time">${time}</span><span class="log-exec">[EXEC]</span> Running prompt: "${promptEl.value}"...`;
-    term.appendChild(newLine);
-    window.setTimeout(() => {
-      const resLine = document.createElement("div");
-      resLine.className = "log-line";
-      resLine.innerHTML = `<span class="log-time">${time}</span><span class="log-ok">[OK]</span> Output generated via Cursor Agent CLI + Playwright engine. Test passed!`;
-      term.appendChild(resLine);
-      term.scrollTop = term.scrollHeight;
-      showToast("沙盒测试命令运行完成");
-    }, 600);
+    void runSandboxTestReal();
   }
 
   function clearLogs(): void {
@@ -239,5 +223,6 @@ declare global {
     closeImportModal: (event?: Event) => void;
     openSkillDetailModal: (filename: string, desc: string) => void;
     closeSkillDetailModal: (event?: Event) => void;
+    runSandboxTest: () => void;
   }
 }

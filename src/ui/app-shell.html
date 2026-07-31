@@ -393,18 +393,17 @@
 
               <div style="display:flex; gap:8px; margin-bottom:12px;">
                 <input type="text" class="form-input" id="sandbox-prompt" value="启动 Playwright 验证目标网站登录状态并刷新 Session Cookie" />
-                <button class="btn btn-primary" onclick="runSandboxTest()">运行测试</button>
+                <button class="btn btn-primary" id="sandbox-run-btn" onclick="runSandboxTest()">运行测试</button>
+                <button class="btn" id="sandbox-cancel-btn" type="button" disabled>取消</button>
               </div>
 
               <div class="terminal-window" style="height:140px;">
                 <div class="terminal-header">
-                  <span>Terminal Stream · cursor-agent --mode agent</span>
-                  <span>Exit: 0</span>
+                  <span id="sandbox-term-header">Terminal Stream · sandbox</span>
+                  <span id="sandbox-exit-code">Exit: —</span>
                 </div>
                 <div class="terminal-body" id="sandbox-term">
-                  <div class="log-line"><span class="log-time">10:14:02</span><span class="log-exec">[EXEC]</span> cursor-agent --mode agent -C /workspaces/web-ops-scripts</div>
-                  <div class="log-line"><span class="log-time">10:14:03</span><span class="log-ok">[OK]</span> Playwright browser launched (chromium headless: true).</div>
-                  <div class="log-line"><span class="log-time">10:14:04</span><span class="log-ok">[RESULT]</span> Session valid. Cookie saved to .cookies/target.json</div>
+                  <div class="log-line"><span class="log-time">ready</span><span class="log-exec">[IDLE]</span> Select an Agent and run a sandbox prompt.</div>
                 </div>
               </div>
             </div>

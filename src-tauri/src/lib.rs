@@ -11,6 +11,7 @@ use commands::agents::{
 };
 use commands::cli::{list_cli_engine_status, probe_cli_engines};
 use commands::db::db_health;
+use commands::sandbox::{sandbox_cancel, sandbox_run};
 use commands::settings::{get_orchestrator_settings, update_orchestrator_settings};
 use commands::system::{app_info, ping, reveal_in_finder};
 use commands::tasks::{
@@ -18,7 +19,7 @@ use commands::tasks::{
     list_task_runs, save_plan, update_node_status, update_run_progress,
 };
 use db::open_db;
-use state::DbState;
+use state::{DbState, SandboxState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,6 +28,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(DbState::new(conn))
+        .manage(SandboxState::new())
         .invoke_handler(tauri::generate_handler![
             ping,
             app_info,
@@ -47,6 +49,8 @@ pub fn run() {
             update_orchestrator_settings,
             probe_cli_engines,
             list_cli_engine_status,
+            sandbox_run,
+            sandbox_cancel,
             create_goal,
             save_plan,
             create_task_run,

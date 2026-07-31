@@ -2,6 +2,7 @@ import shellHtml from "./ui/app-shell.html?raw";
 import { initDetailConfig } from "./ui/agents/detail-config";
 import { initDetailSkills } from "./ui/agents/detail-skills";
 import { initAgentMatrix } from "./ui/agents/matrix";
+import { initSandbox } from "./ui/agents/sandbox";
 import { initAppInfo } from "./ui/app-info";
 import { initCliWidget } from "./ui/cli-widget";
 import { initDemoActions } from "./ui/demo-actions";
@@ -20,6 +21,7 @@ function mountApp(): void {
   initAgentMatrix();
   initDetailSkills();
   initDetailConfig();
+  initSandbox();
   initCliWidget();
   void initAppInfo();
 }

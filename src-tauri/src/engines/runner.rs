@@ -79,9 +79,9 @@ fn canonicalize_existing(path: &str) -> Result<PathBuf, String> {
 }
 
 /// Spawn engine process; stream stdout/stderr lines via `on_log`; return exit code.
+/// Caller must validate `req.cwd` is an imported workspace before calling.
 /// Kills child on cancel token or if the function returns early (drop).
-pub fn run_engine<F>(
-    conn: &Connection,
+pub fn run_engine_unchecked<F>(
     req: &EngineRunRequest,
     cancel: &CancelToken,
     mut on_log: F,
@@ -89,11 +89,7 @@ pub fn run_engine<F>(
 where
     F: FnMut(LogEvent),
 {
-    let cwd = validate_imported_workspace(conn, &req.cwd)?;
-    let mut req = req.clone();
-    req.cwd = cwd;
-
-    let prepared = prepare_command(&req)?;
+    let prepared = prepare_command(req)?;
     emit(
         &mut on_log,
         "stderr",
@@ -191,6 +187,23 @@ where
             }
         }
     }
+}
+
+/// Validate cwd then spawn. Holds no DB lock during process lifetime.
+#[allow(dead_code)] // used by future DAG runner (Phase 5); sandbox uses unchecked path
+pub fn run_engine<F>(
+    conn: &Connection,
+    req: &EngineRunRequest,
+    cancel: &CancelToken,
+    on_log: F,
+) -> Result<i32, String>
+where
+    F: FnMut(LogEvent),
+{
+    let cwd = validate_imported_workspace(conn, &req.cwd)?;
+    let mut req = req.clone();
+    req.cwd = cwd;
+    run_engine_unchecked(&req, cancel, on_log)
 }
 
 fn emit<F: FnMut(LogEvent)>(on_log: &mut F, stream: &str, line: &str) {

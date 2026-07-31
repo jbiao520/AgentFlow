@@ -54,5 +54,6 @@ export async function dbHealth(): Promise<DbHealth> {
 
 export * from "./api/agents";
 export * from "./api/cli";
+export * from "./api/sandbox";
 export * from "./api/settings";
 export * from "./api/tasks";
