@@ -17,6 +17,7 @@ pub fn open_db() -> Result<Connection, String> {
 }
 
 /// Open a Connection at an arbitrary path (tests / custom).
+#[allow(dead_code)]
 pub fn open_db_at(path: &std::path::Path) -> Result<Connection, String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("create dir: {e}"))?;

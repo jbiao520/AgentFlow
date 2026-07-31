@@ -1,4 +1,19 @@
-import { getAppInfo, ping, revealInFinder } from "../lib/tauri";
+import {
+  dbHealth,
+  deleteAgent,
+  getAgentProfile,
+  getAppInfo,
+  getOrchestratorSettings,
+  listAgents,
+  listSkills,
+  ping,
+  revealInFinder,
+  setSkillEnabled,
+  updateOrchestratorSettings,
+  upsertAgent,
+  upsertAgentProfile,
+  upsertSkills,
+} from "../lib/tauri";
 
 export async function initAppInfo(): Promise<void> {
   const badge = document.querySelector(".titlebar-badge");
@@ -32,5 +47,16 @@ export async function initAppInfo(): Promise<void> {
     ping,
     getAppInfo,
     revealInFinder,
+    dbHealth,
+    listAgents,
+    upsertAgent,
+    deleteAgent,
+    getAgentProfile,
+    upsertAgentProfile,
+    listSkills,
+    upsertSkills,
+    setSkillEnabled,
+    getOrchestratorSettings,
+    updateOrchestratorSettings,
   };
 }
