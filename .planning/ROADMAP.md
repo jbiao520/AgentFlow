@@ -79,7 +79,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 1/3 | In progress | - |
+| 1. Foundation | 2/3 | In progress | - |
 | 2. Persistence | 0/? | Not started | - |
 | 3. Agent & Skill | 0/? | Not started | - |
 | 4. CLI Runtime | 0/? | Not started | - |
