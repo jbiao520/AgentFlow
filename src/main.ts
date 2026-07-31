@@ -10,6 +10,7 @@ import { bindModals } from "./ui/modals";
 import { bindNav } from "./ui/nav";
 import { initOrchestratorSettings } from "./ui/orchestrator/settings";
 import { initOrchestratorWorkbench } from "./ui/orchestrator/workbench";
+import { initTaskCenter } from "./ui/tasks/center";
 
 function mountApp(): void {
   const root = document.getElementById("app");
@@ -27,6 +28,7 @@ function mountApp(): void {
   initCliWidget();
   initOrchestratorSettings();
   initOrchestratorWorkbench();
+  initTaskCenter();
   void initAppInfo();
 }
 

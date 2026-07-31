@@ -13,11 +13,8 @@ import {
 } from "./modals";
 import { showToast } from "./toast";
 
-/** Remaining prototype demos (logs, commander). Sandbox uses real CLI (Phase 4). */
+/** Shared window bridges for remaining inline handlers. Task Center owns live logs. */
 export function initDemoActions(): void {
-  let isStreamActive = true;
-  let streamInterval: number | null = null;
-
   function setReasoning(pillElement: HTMLElement): void {
     const parent = pillElement.parentElement;
     parent
@@ -45,120 +42,10 @@ export function initDemoActions(): void {
     showToast("已载入模版，准备拆解");
   }
 
-  function dispatchCommanderTask(): void {
-    const w = window as unknown as { dispatchCommanderTask?: () => void };
-    // workbench overwrites this after init
-    showToast("请先完成调度拆解后再分发");
-    void w;
-  }
-
   function runSandboxTest(): void {
     void runSandboxTestReal();
   }
 
-  function clearLogs(): void {
-    const body = document.getElementById("live-terminal-body");
-    if (body) {
-      body.innerHTML =
-        '<div class="log-line"><span class="log-time">System</span> Logs cleared.</div>';
-    }
-    showToast("终端日志已清空");
-  }
-
-  function copyTerminalLogs(): void {
-    showToast("终端日志已复制到剪贴板！");
-  }
-
-  function startLogSimulation(): void {
-    if (streamInterval) window.clearInterval(streamInterval);
-    const mockLogs = [
-      {
-        time: "10:15:26",
-        agent: "[research-collector]",
-        tag: "log-ok",
-        label: "[SYNC]",
-        text: "Syncing markdown payload to feishu-webhook buffer...",
-      },
-      {
-        time: "10:15:30",
-        agent: "[workflow-orchestrator]",
-        tag: "log-exec",
-        label: "[BOT]",
-        text: "Feishu Webhook triggered successfully. HTTP 200 OK.",
-      },
-      {
-        time: "10:15:35",
-        agent: "[web-browser-ops]",
-        tag: "log-ok",
-        label: "[CLEANUP]",
-        text: "Playwright browser context closed cleanly.",
-      },
-    ];
-    let idx = 0;
-    streamInterval = window.setInterval(() => {
-      if (!isStreamActive) return;
-      if (idx >= mockLogs.length) {
-        if (streamInterval) window.clearInterval(streamInterval);
-        return;
-      }
-      const item = mockLogs[idx++];
-      const body = document.getElementById("live-terminal-body");
-      if (body) {
-        const line = document.createElement("div");
-        line.className = "log-line";
-        line.setAttribute("data-agent", "collector");
-        line.innerHTML = `<span class="log-time">${item.time}</span><span class="log-agent">${item.agent}</span><span class="${item.tag}">${item.label}</span> ${item.text}`;
-        body.appendChild(line);
-        body.scrollTop = body.scrollHeight;
-      }
-    }, 4500);
-  }
-
-  function toggleLiveLogStream(): void {
-    const btn = document.getElementById("toggle-stream-btn");
-    if (!btn) return;
-    if (isStreamActive) {
-      isStreamActive = false;
-      btn.textContent = "▶ 恢复日志流";
-      if (streamInterval) window.clearInterval(streamInterval);
-      showToast("已暂停日志流");
-    } else {
-      isStreamActive = true;
-      btn.textContent = "⏸ 暂停日志流";
-      startLogSimulation();
-      showToast("已恢复日志流");
-    }
-  }
-
-  function filterTermTab(tabEl: HTMLElement, filterType: string): void {
-    document
-      .querySelectorAll(".term-tab")
-      .forEach((t) => t.classList.remove("active"));
-    tabEl.classList.add("active");
-    document.querySelectorAll("#live-terminal-body .log-line").forEach((line) => {
-      if (filterType === "all") {
-        (line as HTMLElement).style.display = "block";
-      } else {
-        const agent = line.getAttribute("data-agent");
-        (line as HTMLElement).style.display =
-          agent === filterType ? "block" : "none";
-      }
-    });
-  }
-
-  function filterTerminalByAgent(agentName: string): void {
-    showToast(`已按 Agent [${agentName}] 过滤日志视角`);
-  }
-
-  function switchTaskHistory(cardEl: HTMLElement, taskId: string): void {
-    document
-      .querySelectorAll(".task-item-card")
-      .forEach((c) => c.classList.remove("active"));
-    cardEl.classList.add("active");
-    showToast(`切换至任务视角: ${taskId}`);
-  }
-
-  /** Bridge for remaining inline onclick handlers in app-shell.html */
   const api = {
     showToast,
     switchView: (viewId: string, _nav?: Element | null) => {
@@ -186,18 +73,10 @@ export function initDemoActions(): void {
     openSkillDetailModal,
     closeSkillDetailModal,
     fillCommanderTemplate,
-    dispatchCommanderTask,
     runSandboxTest,
-    clearLogs,
-    copyTerminalLogs,
-    toggleLiveLogStream,
-    filterTermTab,
-    filterTerminalByAgent,
-    switchTaskHistory,
   };
 
   Object.assign(window, api);
-  startLogSimulation();
 }
 
 declare global {

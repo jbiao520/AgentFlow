@@ -490,135 +490,62 @@
         <div class="page-header">
           <div>
             <h1 class="page-title">任务中心与 DAG 协同</h1>
-            <p class="page-desc">监控多 Agent 依赖 DAG 图、Playwright 实时终端日志流与自动化产物。</p>
+            <p class="page-desc">监控多 Agent 依赖 DAG 图、实时终端日志流与自动化产物。</p>
           </div>
           <div style="display:flex; gap:8px;">
-            <button class="btn btn-secondary btn-sm" id="toggle-stream-btn" onclick="toggleLiveLogStream()">⏸ 暂停日志流</button>
-            <button class="btn btn-secondary btn-sm" onclick="copyTerminalLogs()">复制日志</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="toggle-stream-btn">⏸ 暂停日志流</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="copy-logs-btn">复制日志</button>
           </div>
         </div>
 
         <div class="task-split-layout">
-          <!-- Left Task History List -->
           <div class="task-list-panel">
             <div class="task-list-header">
               <span>任务执行历史</span>
-              <span style="font-size:11px; font-weight:normal; color:var(--fg-muted);">共 3 个</span>
+              <span id="task-history-count" style="font-size:11px; font-weight:normal; color:var(--fg-muted);">共 0 个</span>
             </div>
-            
-            <div class="task-item-card active" onclick="switchTaskHistory(this, 'task1')">
-              <div class="task-item-title">#2026-0801 全网竞品价格与动态监控</div>
-              <div class="task-item-meta">
-                <span style="color:var(--accent-amber);">⚡ 65% 执行中</span>
-                <span>03m 42s</span>
-              </div>
-            </div>
-
-            <div class="task-item-card" onclick="switchTaskHistory(this, 'task2')">
-              <div class="task-item-title">#2026-0731 每日网站 UI 巡检与断链检测</div>
-              <div class="task-item-meta">
-                <span style="color:var(--accent-emerald);">已完成</span>
-                <span>01m 15s</span>
-              </div>
-            </div>
-
-            <div class="task-item-card" onclick="switchTaskHistory(this, 'task3')">
-              <div class="task-item-title">#2026-0730 周报跨平台自动排版与草稿发布</div>
-              <div class="task-item-meta">
-                <span style="color:var(--accent-emerald);">已完成</span>
-                <span>02m 08s</span>
-              </div>
-            </div>
+            <div id="task-history-list"></div>
           </div>
 
-          <!-- Right Task Detail DAG & Stream Terminal -->
           <div style="display:flex; flex-direction:column; gap:14px; overflow-y:auto;">
-            
-            <!-- DAG Topology Visualization -->
             <div class="card-panel" style="margin-bottom:0;">
               <div class="panel-title-bar">
                 <div class="panel-title">任务依赖拓扑图 (Task DAG)</div>
                 <div style="display:flex; gap:6px;">
-                  <button class="btn btn-secondary btn-sm" onclick="showToast('正在切换 Headed 模式重新尝试...')">浏览器失败重试</button>
-                  <button class="btn btn-secondary btn-sm" onclick="showToast('已人工跳过当前阻断节点！')">人工跳过</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-retry-node">失败重试</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-skip-node">人工跳过</button>
                 </div>
               </div>
-
-              <!-- Compact DAG SVG -->
-              <svg viewBox="0 0 700 110" style="width:100%; height:110px; background:#f8fafc; border:1px solid var(--border-color); border-radius:6px;">
-                <line x1="180" y1="55" x2="260" y2="55" stroke="#059669" stroke-width="1.5"/>
-                <line x1="440" y1="55" x2="520" y2="55" stroke="#d97706" stroke-width="1.5" stroke-dasharray="4" class="flowing-edge"/>
-
-                <!-- Node 1 -->
-                <g transform="translate(20, 20)" style="cursor:pointer;" onclick="filterTerminalByAgent('web-browser-ops')">
-                  <rect width="160" height="65" rx="6" fill="#ffffff" stroke="#059669" stroke-width="1.2"/>
-                  <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">1. web-browser-ops</text>
-                  <text x="12" y="42" fill="#059669" font-size="10" font-weight="600">Scraped 3 sites</text>
-                  <text x="12" y="56" fill="#64748b" font-size="9" font-family="var(--font-mono)">Playwright / 01m 20s</text>
-                </g>
-
-                <!-- Node 2 -->
-                <g transform="translate(260, 20)" style="cursor:pointer;" onclick="filterTerminalByAgent('research-collector')">
-                  <rect width="180" height="65" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.5"/>
-                  <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">2. research-collector</text>
-                  <text x="12" y="42" fill="#b45309" font-size="10" font-weight="600">Working (Markdown 80%)</text>
-                  <text x="12" y="56" fill="#64748b" font-size="9" font-family="var(--font-mono)">Codex Sol / summary.md</text>
-                </g>
-
-                <!-- Node 3 -->
-                <g transform="translate(520, 20)" style="cursor:pointer;" onclick="filterTerminalByAgent('workflow-orchestrator')">
-                  <rect width="160" height="65" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
-                  <text x="12" y="26" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">3. workflow-orchestrator</text>
-                  <text x="12" y="42" fill="#64748b" font-size="10">Waiting Node #2</text>
-                  <text x="12" y="56" fill="#64748b" font-size="9" font-family="var(--font-mono)">Feishu Webhook Bot</text>
-                </g>
-              </svg>
+              <div id="task-dag-container"></div>
             </div>
 
-            <!-- Terminal Stream Viewer -->
             <div class="terminal-window" style="height:210px;" data-od-id="task-terminal">
               <div class="terminal-header">
                 <div style="display:flex; gap:10px; align-items:center;">
-                  <span>实时终端 & Playwright 日志流</span>
-                  <div class="terminal-tabs">
-                    <span class="term-tab active" onclick="filterTermTab(this, 'all')">All</span>
-                    <span class="term-tab" onclick="filterTermTab(this, 'browser')">browser-ops</span>
-                    <span class="term-tab" onclick="filterTermTab(this, 'collector')">research-collector</span>
+                  <span>实时终端日志流</span>
+                  <div class="terminal-tabs" id="task-log-tabs">
+                    <span class="term-tab active" data-filter="all">All</span>
                   </div>
                 </div>
                 <div>
-                  <button style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:11px; font-family:var(--font-mono);" onclick="clearLogs()">Clear</button>
+                  <button type="button" id="clear-logs-btn" style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:11px; font-family:var(--font-mono);">Clear</button>
                 </div>
               </div>
               <div class="terminal-body" id="live-terminal-body">
-                <div class="log-line" data-agent="browser"><span class="log-time">10:15:10</span><span class="log-agent">[web-browser-ops]</span><span class="log-ok">[OK]</span> Playwright browser launched. Navigating to competitor-a.com...</div>
-                <div class="log-line" data-agent="browser"><span class="log-time">10:15:12</span><span class="log-agent">[web-browser-ops]</span><span class="log-exec">[SCRAPE]</span> Extracted 12 pricing items. Saved raw_a.json</div>
-                <div class="log-line" data-agent="collector"><span class="log-time">10:15:15</span><span class="log-agent">[research-collector]</span><span class="log-ok">[SKILL]</span> Applying skill 'llm-summarizer.md'...</div>
-                <div class="log-line" data-agent="collector"><span class="log-time">10:15:18</span><span class="log-agent">[research-collector]</span><span class="log-exec">[WRITE]</span> Generated market-intel-hub/summary.md (+82 lines).</div>
-                <div class="log-line" data-agent="collector"><span class="log-time">10:15:22</span><span class="log-agent">[research-collector]</span><span class="log-warn">[VALIDATE]</span> Checking markdown formatting... Verified.</div>
+                <div class="log-line"><span class="log-time">System</span> Select a run to load logs.</div>
               </div>
             </div>
 
-            <!-- Data & Document Artifact Preview -->
             <div class="card-panel" style="margin-bottom:0;">
               <div class="panel-title-bar">
                 <div class="panel-title">自动化产生的数据与文档产物</div>
                 <div style="display:flex; gap:8px; align-items:center;">
-                  <span style="font-size:11px; color:var(--fg-muted); font-family:var(--font-mono);">market-intel-hub / summary.md</span>
-                  <button class="btn btn-secondary btn-sm" onclick="showToast('已复制产物到剪贴板！')">复制产物</button>
+                  <span id="artifact-path-label" style="font-size:11px; color:var(--fg-muted); font-family:var(--font-mono);">—</span>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-artifact">复制产物</button>
                 </div>
               </div>
-
-              <div class="diff-box" id="artifact-content-box">
-                <div style="color:#38bdf8; font-weight:bold; margin-bottom:6px;"># 竞品价格与促销动态周报 (2026-08-01)</div>
-                <div style="color:#f1f5f9; margin-bottom:4px;">## 1. 核心变化摘要</div>
-                <div style="color:#4ade80;">- 竞品 A: 旗舰款降价 12% (原价 ¥299 -> 现价 ¥263)，限时赠送 14 天高级功能试用。</div>
-                <div style="color:#4ade80;">- 竞品 B: 推出全新个人自动化订阅包 (¥199/月)，主打 Playwright 网页抓取场景。</div>
-                <div style="color:#f1f5f9; margin-top:8px; margin-bottom:4px;">## 2. 结构化 JSON 数据</div>
-                <div style="color:#c084fc;">{ "scraped_at": "2026-08-01T10:15:20Z", "status": "success", "items_count": 12 }</div>
-              </div>
+              <pre class="diff-box" id="artifact-content-box" style="white-space:pre-wrap; margin:0; font-family:var(--font-mono); font-size:11px;">Select a node with artifacts to preview.</pre>
             </div>
-
           </div>
         </div>
       </div>

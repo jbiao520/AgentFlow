@@ -148,6 +148,7 @@ pub fn create_goal(
     })
 }
 
+#[allow(dead_code)] // used by future overview / IPC lookups
 pub fn get_goal(conn: &Connection, id: &str) -> Result<Option<Goal>, String> {
     conn.query_row(
         "SELECT id, prompt, template_key, created_at FROM goals WHERE id = ?1",

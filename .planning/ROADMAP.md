@@ -4,7 +4,7 @@
 
 从 HTML 原型落地为 macOS Tauri App：先搭壳与持久化，再接通 Agent/Skill 与 CLI 运行时，随后实现可配置调度中枢与 DAG 任务闭环，最后补齐总览拓扑与打包打磨，达到「原型 5 页全可用 + SQLite 可重启」的 v1.0。
 
-**Planning status:** 全部 6 个 Phase、共 **18** 份可执行 `PLAN.md` 已就绪（Phase 1–4 完成）.
+**Planning status:** 全部 6 个 Phase、共 **18** 份可执行 `PLAN.md` 已就绪（Phase 1–5 完成）.
 
 ## Phases
 
@@ -12,7 +12,7 @@
 - [x] **Phase 2: Persistence** - SQLite 模型、迁移与 Repository
 - [x] **Phase 3: Agent & Skill** - 导入工作区、Skill 扫描、矩阵/详情接真数据
 - [x] **Phase 4: CLI Runtime** - 三引擎适配、沙盒执行、日志流
-- [ ] **Phase 5: Orchestrator** - 独立编排配置、Plan/Dispatch、DAG 执行与重试
+- [x] **Phase 5: Orchestrator** - 独立编排配置、Plan/Dispatch、DAG 执行与重试
 - [ ] **Phase 6: Overview & Polish** - 总览聚合、拓扑、Cmd+K、macOS 打包验收
 
 ## Phase Details
@@ -63,9 +63,9 @@ Plans:
 **Plans**: 3
 
 Plans:
-- [ ] 05-01: Orchestrator 设置 + Plan 生成/校验 — [05-01-PLAN.md](phases/05-orchestrator/05-01-PLAN.md)
-- [ ] 05-02: Dispatch + DAG Runner — [05-02-PLAN.md](phases/05-orchestrator/05-02-PLAN.md)
-- [ ] 05-03: 任务中心 UI + 重试/跳过 — [05-03-PLAN.md](phases/05-orchestrator/05-03-PLAN.md)
+- [x] 05-01: Orchestrator 设置 + Plan 生成/校验 — [05-01-PLAN.md](phases/05-orchestrator/05-01-PLAN.md)
+- [x] 05-02: Dispatch + DAG Runner — [05-02-PLAN.md](phases/05-orchestrator/05-02-PLAN.md)
+- [x] 05-03: 任务中心 UI + 重试/跳过 — [05-03-PLAN.md](phases/05-orchestrator/05-03-PLAN.md)
 
 ### Phase 6: Overview & Polish
 **Goal**: 总览真实指标与拓扑；Cmd+K；打出可启动的 macOS `.app` 并过发布门禁  
@@ -85,7 +85,7 @@ Plans:
 | 2. Persistence | 3/3 | Complete | 2026-07-31 |
 | 3. Agent & Skill | 3/3 | Complete | 2026-07-31 |
 | 4. CLI Runtime | 3/3 | Complete | 2026-07-31 |
-| 5. Orchestrator | 0/3 | Not started | - |
+| 5. Orchestrator | 3/3 | Complete | 2026-07-31 |
 | 6. Overview & Polish | 0/3 | Not started | - |
 
 ## Execution order
