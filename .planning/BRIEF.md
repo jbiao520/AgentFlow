@@ -1,4 +1,4 @@
-# AgentMind
+# AgentFlow
 
 **One-liner**: 个人 Mac 上的 AI Agent 管理与调度平台——把多个「Repo + Skill + CLI」Agent 编排成可执行的个人 AI 大脑。
 

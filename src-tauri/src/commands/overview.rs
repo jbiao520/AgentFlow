@@ -1,8 +1,9 @@
-//! Overview aggregation IPC — stats, topology, running queue from SQLite.
-use crate::db::now_iso8601;
-use crate::repo::{list_agents, Agent};
+//! Overview aggregation IPC — stats, recent agents usage, running queue from SQLite.
+use crate::db::{format_unix_as_iso8601, now_iso8601, now_unix};
+use crate::repo::usage::UsageBreakdown;
+use crate::repo::{list_agents, summarize_node_usage, Agent};
 use crate::state::DbState;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -24,31 +25,24 @@ pub struct OverviewStats {
     pub running_tasks: i64,
     pub completed_today: i64,
     pub success_rate_today: f64,
-    /// Token usage not tracked in v1 — always "n/a".
-    pub tokens_display: String,
+    /// All-time tokens reported by CLI streams, grouped by engine/provider/model.
+    pub tokens_total: u64,
+    /// Sum of real (opencode) + estimated (codex) cost in USD.
+    pub tokens_cost: Option<f64>,
+    pub usage_breakdown: Vec<UsageBreakdown>,
 }
 
+/// Agent ranked by recent task-node assignments (calls).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TopologyNode {
-    pub id: String,
-    pub kind: String, // "orchestrator" | "agent"
-    pub label: String,
-    pub sublabel: String,
+pub struct RecentAgentUsage {
+    pub agent_id: String,
+    pub name: String,
+    pub default_cli: String,
     pub status: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TopologyEdge {
-    pub from_id: String,
-    pub to_id: String,
-    pub style: String, // "solid" | "dashed"
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OverviewTopology {
-    pub nodes: Vec<TopologyNode>,
-    pub edges: Vec<TopologyEdge>,
-    pub caption: String,
+    pub calls_1d: i64,
+    pub calls_7d: i64,
+    pub calls_30d: i64,
+    pub last_used_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,13 +116,20 @@ pub fn compute_overview_stats(conn: &Connection) -> Result<OverviewStats, String
         (completed_today as f64 / finished_today as f64) * 100.0
     };
 
+    let usage = summarize_node_usage(conn)?;
+    let tokens_total: u64 = usage.iter().map(|u| u.total_tokens).sum();
+    let cost_sum: f64 = usage.iter().filter_map(|u| u.cost).sum();
+    let tokens_cost = if cost_sum > 0.0 { Some(cost_sum) } else { None };
+
     Ok(OverviewStats {
         agent_count,
         agents_healthy_pct,
         running_tasks,
         completed_today,
         success_rate_today,
-        tokens_display: "n/a".into(),
+        tokens_total,
+        tokens_cost,
+        usage_breakdown: usage,
     })
 }
 
@@ -136,186 +137,72 @@ fn agent_by_id<'a>(agents: &'a [Agent], id: &str) -> Option<&'a Agent> {
     agents.iter().find(|a| a.id == id)
 }
 
-fn recent_collaboration_agent_ids(conn: &Connection) -> Result<(Option<String>, Vec<String>), String> {
-    // Prefer an active run; else most recent run with nodes.
-    let active_run_id: Option<String> = conn
-        .query_row(
-            "SELECT id FROM task_runs
-             WHERE status IN ('queued', 'running')
-             ORDER BY COALESCE(started_at, '') DESC, id DESC
-             LIMIT 1",
-            [],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(|e| e.to_string())?;
+/// Event time for a task node assignment — prefer node timestamps, fall back to run.
+const NODE_EVENT_TS: &str =
+    "COALESCE(n.started_at, n.finished_at, r.started_at, r.finished_at)";
 
-    let run_id = if let Some(id) = active_run_id {
-        Some(id)
-    } else {
-        conn.query_row(
-            "SELECT id FROM task_runs ORDER BY COALESCE(started_at, finished_at, '') DESC, id DESC LIMIT 1",
-            [],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(|e| e.to_string())?
-    };
-
-    let Some(run_id) = run_id else {
-        return Ok((None, vec![]));
-    };
-
-    let mut stmt = conn
-        .prepare(
-            "SELECT DISTINCT agent_id FROM task_nodes
-             WHERE run_id = ?1 AND agent_id IS NOT NULL AND trim(agent_id) != ''
-             ORDER BY seq",
-        )
-        .map_err(|e| e.to_string())?;
-    let ids = stmt
-        .query_map(params![run_id], |r| r.get::<_, String>(0))
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
-    Ok((Some(run_id), ids))
-}
-
-fn collaboration_edges(
+/// Top recently-used agents by task-node assignment counts in 1d / 7d / 30d windows.
+pub fn compute_recent_agents(
     conn: &Connection,
-    run_id: &str,
-) -> Result<Vec<(String, String)>, String> {
-    // Edges between agents based on depends_on between nodes in the same run.
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, agent_id, depends_on_json FROM task_nodes
-             WHERE run_id = ?1 ORDER BY seq",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows: Vec<(String, Option<String>, Option<String>)> = stmt
-        .query_map(params![run_id], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+    limit: usize,
+) -> Result<Vec<RecentAgentUsage>, String> {
+    let now = now_unix();
+    let cut_1d = format_unix_as_iso8601(now.saturating_sub(86_400));
+    let cut_7d = format_unix_as_iso8601(now.saturating_sub(7 * 86_400));
+    let cut_30d = format_unix_as_iso8601(now.saturating_sub(30 * 86_400));
+
+    let sql = format!(
+        "SELECT n.agent_id,
+                MAX({ts}) AS last_used_at,
+                SUM(CASE WHEN {ts} >= ?1 THEN 1 ELSE 0 END) AS calls_1d,
+                SUM(CASE WHEN {ts} >= ?2 THEN 1 ELSE 0 END) AS calls_7d,
+                SUM(CASE WHEN {ts} >= ?3 THEN 1 ELSE 0 END) AS calls_30d
+         FROM task_nodes n
+         INNER JOIN task_runs r ON r.id = n.run_id
+         WHERE n.agent_id IS NOT NULL AND trim(n.agent_id) != ''
+           AND {ts} IS NOT NULL
+           AND {ts} >= ?3
+         GROUP BY n.agent_id
+         ORDER BY calls_7d DESC, calls_30d DESC, last_used_at DESC
+         LIMIT ?4",
+        ts = NODE_EVENT_TS
+    );
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let lim = limit.max(1) as i64;
+    let rows: Vec<(String, Option<String>, i64, i64, i64)> = stmt
+        .query_map(params![cut_1d, cut_7d, cut_30d, lim], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+            ))
         })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
-    let id_to_agent: std::collections::HashMap<String, String> = rows
-        .iter()
-        .filter_map(|(nid, aid, _)| {
-            aid.as_ref()
-                .filter(|a| !a.trim().is_empty())
-                .map(|a| (nid.clone(), a.clone()))
-        })
-        .collect();
-
-    let mut edges = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    for (nid, aid, deps_json) in &rows {
-        let Some(to_agent) = aid.as_ref().filter(|a| !a.trim().is_empty()) else {
+    let agents = list_agents(conn)?;
+    let mut out = Vec::new();
+    for (agent_id, last_used_at, calls_1d, calls_7d, calls_30d) in rows {
+        let Some(a) = agent_by_id(&agents, &agent_id) else {
+            // Soft-deleted or unknown agent — skip from "recent"
             continue;
         };
-        let deps: Vec<String> = deps_json
-            .as_ref()
-            .and_then(|j| serde_json::from_str(j).ok())
-            .unwrap_or_default();
-        for dep in deps {
-            // depends_on may reference node id or seq label — try node id first
-            let from_agent = id_to_agent.get(&dep).cloned().or_else(|| {
-                // also allow matching by title-less seq keys stored as node ids only
-                None
-            });
-            let Some(from_agent) = from_agent else {
-                continue;
-            };
-            if from_agent == *to_agent {
-                continue;
-            }
-            let key = (from_agent.clone(), to_agent.clone());
-            if seen.insert(key.clone()) {
-                edges.push(key);
-            }
-        }
-        let _ = nid;
-    }
-    Ok(edges)
-}
-
-pub fn compute_overview_topology(conn: &Connection) -> Result<OverviewTopology, String> {
-    let agents = list_agents(conn)?;
-    let (run_id, collab_ids) = recent_collaboration_agent_ids(conn)?;
-
-    let mut nodes = vec![TopologyNode {
-        id: "orchestrator".into(),
-        kind: "orchestrator".into(),
-        label: "Dispatch Hub".into(),
-        sublabel: "调度中枢".into(),
-        status: "idle".into(),
-    }];
-
-    for a in &agents {
-        nodes.push(TopologyNode {
-            id: a.id.clone(),
-            kind: "agent".into(),
-            label: a.name.clone(),
-            sublabel: a.default_cli.clone(),
+        out.push(RecentAgentUsage {
+            agent_id,
+            name: a.name.clone(),
+            default_cli: a.default_cli.clone(),
             status: a.status.clone(),
+            calls_1d,
+            calls_7d,
+            calls_30d,
+            last_used_at,
         });
     }
-
-    let mut edges = Vec::new();
-    let collab_set: std::collections::HashSet<&str> =
-        collab_ids.iter().map(|s| s.as_str()).collect();
-
-    // Hub → agents involved in current/recent run (or all agents if no run edges)
-    let hub_targets: Vec<&Agent> = if collab_ids.is_empty() {
-        agents.iter().collect()
-    } else {
-        agents
-            .iter()
-            .filter(|a| collab_set.contains(a.id.as_str()))
-            .collect()
-    };
-
-    for (i, a) in hub_targets.iter().enumerate() {
-        edges.push(TopologyEdge {
-            from_id: "orchestrator".into(),
-            to_id: a.id.clone(),
-            style: if i % 2 == 0 {
-                "solid".into()
-            } else {
-                "dashed".into()
-            },
-        });
-    }
-
-    if let Some(rid) = &run_id {
-        for (from, to) in collaboration_edges(conn, rid)? {
-            // only keep edges between registered agents
-            if agent_by_id(&agents, &from).is_some() && agent_by_id(&agents, &to).is_some() {
-                edges.push(TopologyEdge {
-                    from_id: from,
-                    to_id: to,
-                    style: "solid".into(),
-                });
-            }
-        }
-    }
-
-    let caption = if agents.is_empty() {
-        "尚未注册 Agent — 从矩阵导入工作区".into()
-    } else if run_id.is_some() && !collab_ids.is_empty() {
-        format!("{} 个 Agent 参与近期协作", collab_ids.len())
-    } else {
-        format!("{} 个已注册 Agent", agents.len())
-    };
-
-    Ok(OverviewTopology {
-        nodes,
-        edges,
-        caption,
-    })
+    Ok(out)
 }
 
 fn format_elapsed(started_at: Option<&str>) -> String {
@@ -501,8 +388,8 @@ pub fn get_overview_stats(state: State<'_, DbState>) -> Result<OverviewStats, St
 }
 
 #[tauri::command]
-pub fn get_overview_topology(state: State<'_, DbState>) -> Result<OverviewTopology, String> {
-    with_db(&state, compute_overview_topology)
+pub fn list_recent_agents(state: State<'_, DbState>) -> Result<Vec<RecentAgentUsage>, String> {
+    with_db(&state, |conn| compute_recent_agents(conn, 8))
 }
 
 #[tauri::command]
@@ -516,9 +403,9 @@ mod tests {
     use crate::db::open_db_at;
     use crate::repo::{
         create_goal, create_task_run, insert_task_nodes, save_plan, update_run_progress,
-        AgentUpsert, TaskNodeInsert,
+        AgentUpsert, NodeUsageInsert, TaskNodeInsert,
     };
-    use crate::repo::{upsert_agent, update_node_status};
+    use crate::repo::{record_node_usage, upsert_agent, update_node_status};
     use tempfile::TempDir;
 
     #[test]
@@ -580,20 +467,80 @@ mod tests {
         assert_eq!(stats.running_tasks, 1);
         assert_eq!(stats.completed_today, 1);
         assert!((stats.success_rate_today - 100.0).abs() < 0.01);
-        assert_eq!(stats.tokens_display, "n/a");
+        assert_eq!(stats.tokens_total, 0);
+        assert!(stats.tokens_cost.is_none());
+        assert!(stats.usage_breakdown.is_empty());
 
         let queue = compute_running_queue(&conn).unwrap();
         assert_eq!(queue.len(), 1);
         assert_eq!(queue[0].run_id, run.id);
         assert!(queue[0].goal_prompt.contains("Test goal"));
 
-        let topo = compute_overview_topology(&conn).unwrap();
-        assert!(topo.nodes.iter().any(|n| n.kind == "orchestrator"));
-        assert_eq!(topo.nodes.iter().filter(|n| n.kind == "agent").count(), 2);
+        // No task_nodes with agents → empty recent list
+        let recent = compute_recent_agents(&conn, 8).unwrap();
+        assert!(recent.is_empty());
     }
 
     #[test]
-    fn topology_includes_collab_edges_from_depends_on() {
+    fn overview_usage_breakdown_aggregates_by_model() {
+        let dir = TempDir::new().unwrap();
+        let conn = open_db_at(&dir.path().join("t.db")).unwrap();
+
+        let goal = create_goal(&conn, "Usage", None).unwrap();
+        let plan = save_plan(&conn, &goal.id, "{}").unwrap();
+        let run = create_task_run(&conn, &goal.id, &plan.id).unwrap();
+        let nodes = insert_task_nodes(
+            &conn,
+            &run.id,
+            &[TaskNodeInsert {
+                id: Some("n0".into()),
+                seq: 0,
+                title: "Work".into(),
+                agent_id: None,
+                skill_ids_json: None,
+                cli_engine: Some("codex".into()),
+                model: Some("gpt-5.4".into()),
+                reasoning_effort: None,
+                depends_on_json: Some("[]".into()),
+                status: None,
+                artifact_paths_json: None,
+            }],
+        )
+        .unwrap();
+
+        record_node_usage(
+            &conn,
+            &NodeUsageInsert {
+                run_id: run.id.clone(),
+                node_id: nodes[0].id.clone(),
+                engine: "codex".into(),
+                provider: "openai".into(),
+                model: Some("gpt-5.4".into()),
+                input_tokens: 100,
+                cached_input_tokens: 10,
+                cache_write_input_tokens: 0,
+                output_tokens: 50,
+                reasoning_tokens: 20,
+                cost: Some(0.001),
+                estimated: false,
+            },
+        )
+        .unwrap();
+
+        let stats = compute_overview_stats(&conn).unwrap();
+        assert_eq!(stats.tokens_total, 170);
+        assert_eq!(stats.usage_breakdown.len(), 1);
+        let b = &stats.usage_breakdown[0];
+        assert_eq!(b.provider, "openai");
+        assert_eq!(b.model, "gpt-5.4");
+        assert_eq!(b.engine, "codex");
+        assert_eq!(b.total_tokens, 170);
+        assert!((b.cost.unwrap() - 0.001).abs() < 1e-9);
+        assert!(stats.tokens_cost.is_some());
+    }
+
+    #[test]
+    fn recent_agents_counts_calls_by_window() {
         let dir = TempDir::new().unwrap();
         let conn = open_db_at(&dir.path().join("t.db")).unwrap();
 
@@ -618,8 +565,8 @@ mod tests {
                 description: None,
                 workspace_path: "/tmp/w".into(),
                 git_url: None,
-                default_cli: "codex".into(),
-                status: Some("idle".into()),
+                default_cli: "opencode".into(),
+                status: Some("working".into()),
             },
         )
         .unwrap();
@@ -647,30 +594,48 @@ mod tests {
                 TaskNodeInsert {
                     id: Some("n1".into()),
                     seq: 1,
-                    title: "Write".into(),
+                    title: "Write A".into(),
                     agent_id: Some(b.id.clone()),
                     skill_ids_json: None,
-                    cli_engine: Some("codex".into()),
+                    cli_engine: Some("opencode".into()),
                     model: None,
                     reasoning_effort: None,
                     depends_on_json: Some(r#"["n0"]"#.into()),
                     status: None,
                     artifact_paths_json: None,
                 },
+                TaskNodeInsert {
+                    id: Some("n2".into()),
+                    seq: 2,
+                    title: "Write B".into(),
+                    agent_id: Some(b.id.clone()),
+                    skill_ids_json: None,
+                    cli_engine: Some("opencode".into()),
+                    model: None,
+                    reasoning_effort: None,
+                    depends_on_json: Some(r#"["n1"]"#.into()),
+                    status: None,
+                    artifact_paths_json: None,
+                },
             ],
         )
         .unwrap();
-        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes.len(), 3);
         update_run_progress(&conn, &run.id, 0.2, Some("running")).unwrap();
         let _ = update_node_status(&conn, "n0", "running");
+        let _ = update_node_status(&conn, "n1", "running");
+        let _ = update_node_status(&conn, "n2", "running");
 
-        let topo = compute_overview_topology(&conn).unwrap();
-        assert!(
-            topo.edges
-                .iter()
-                .any(|e| e.from_id == a.id && e.to_id == b.id),
-            "expected scraper→writer edge, got {:?}",
-            topo.edges
-        );
+        let recent = compute_recent_agents(&conn, 8).unwrap();
+        assert_eq!(recent.len(), 2, "expected both agents, got {:?}", recent);
+        // writer has 2 nodes → should rank first by calls_7d
+        assert_eq!(recent[0].agent_id, b.id);
+        assert_eq!(recent[0].name, "writer");
+        assert_eq!(recent[0].calls_1d, 2);
+        assert_eq!(recent[0].calls_7d, 2);
+        assert_eq!(recent[0].calls_30d, 2);
+        assert_eq!(recent[1].agent_id, a.id);
+        assert_eq!(recent[1].calls_1d, 1);
+        assert!(recent[0].last_used_at.is_some());
     }
 }

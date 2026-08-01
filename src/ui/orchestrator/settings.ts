@@ -1,6 +1,6 @@
 /**
- * Orchestrator settings panel on 调度中枢 — independent CLI / model / reasoning.
- * Models and efforts are loaded live from the selected local CLI.
+ * Orchestrator brain settings (CLI / model / reasoning).
+ * Mounted under Settings → 中枢大脑; models/efforts load from the selected local CLI.
  */
 import {
   getOrchestratorSettings,
@@ -69,7 +69,7 @@ export async function saveOrchestratorSettings(): Promise<void> {
         keepUnavailable: true,
       });
     }
-    showToast("调度中枢配置已保存");
+    showToast("中枢大脑配置已保存");
   } catch (e) {
     showToast(`保存失败: ${e instanceof Error ? e.message : String(e)}`);
   }

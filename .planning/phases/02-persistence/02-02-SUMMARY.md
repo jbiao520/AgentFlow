@@ -5,7 +5,7 @@
 ## Accomplishments
 - Rust repos: agents (list/get/upsert/delete), profiles (get/upsert), skills (list/upsert_many/set_enabled), orchestrator (get/update)
 - Validation: unique agent name, non-empty workspace_path; FK CASCADE on agent delete
-- IPC commands registered; frontend API + `__agentmindDebug` console helpers for smoke CRUD
+- IPC commands registered; frontend API + `__agentflowDebug` console helpers for smoke CRUD
 - Existing ping/app_info/reveal_in_finder preserved
 
 ## Files Created/Modified

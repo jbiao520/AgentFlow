@@ -53,6 +53,9 @@ pub struct PlanClarification {
 pub struct PlanAnalysis {
     pub intent: PlanIntent,
     pub subtasks: Vec<PlanSubtask>,
+    /// Max ready nodes to run in parallel (1–8). Absent → runner default (1).
+    #[serde(default)]
+    pub concurrency: Option<usize>,
     /// Clarifying questions (0–6). Empty/absent → skip Q&A UI.
     #[serde(default)]
     pub questions: Vec<PlanQuestion>,
@@ -310,6 +313,17 @@ pub fn validate_plan(
     }
 
     sanitize_questions(&mut plan, &mut warnings);
+
+    if let Some(raw) = plan.concurrency {
+        let clamped = crate::services::dag_runner::clamp_concurrency(raw);
+        if clamped != raw {
+            warnings.push(format!(
+                "concurrency {raw} clamped to {clamped} (allowed 1–{})",
+                crate::services::dag_runner::MAX_CONCURRENCY
+            ));
+        }
+        plan.concurrency = Some(clamped);
+    }
 
     Ok(ValidatePlanResult { plan, warnings })
 }
@@ -639,7 +653,7 @@ pub fn build_orchestrate_prompt(goal: &str, catalog: &[CatalogAgent]) -> Result<
     let catalog_json = serde_json::to_string_pretty(catalog)
         .map_err(|e| format!("catalog serialize: {e}"))?;
     Ok(format!(
-        r#"You are the AgentMind Orchestrator. Given the user GOAL and the AGENT CATALOG, produce a single JSON plan.
+        r#"You are the AgentFlow Orchestrator. Given the user GOAL and the AGENT CATALOG, produce a single JSON plan.
 
 RULES:
 - Respond with ONLY a JSON object (no markdown commentary outside optional ```json fences).
@@ -648,10 +662,11 @@ RULES:
 - depends_on must reference other subtask ids in this plan.
 - Include a concrete prompt for each subtask.
 - artifact_paths must be workspace-relative paths that the subtask will actually create (match the prompt).
-- Cross-agent pipelines are allowed. Downstream prompts must NOT assume upstream workspace paths; at runtime AgentMind copies predecessor artifacts into `.agentmind/handoff/<run_id>/<upstream_id>/` inside the consumer workspace and injects those paths into the prompt.
+- Cross-agent pipelines are allowed. Downstream prompts must NOT assume upstream workspace paths; at runtime AgentFlow copies predecessor artifacts into `.agentflow/handoff/<run_id>/<upstream_id>/` inside the consumer workspace and injects those paths into the prompt.
 - For every producer subtask that creates files, set artifact_paths to those exact relative paths so dependents can receive them.
 - If the GOAL is clear and actionable, set "questions" to [].
 - If the GOAL is ambiguous, add up to 6 clarifying questions (single-choice, 2–4 options each) that unblock planning decisions. Still produce a best-effort intent + subtasks; answers will refine prompts later.
+- Set "concurrency" to how many independent ready subtasks may run in parallel (integer 1–8). Use 1 when the DAG is mostly sequential; use 2–8 only when several subtasks share no depends_on chain and can safely run together.
 
 GOAL:
 {goal}
@@ -662,6 +677,7 @@ AGENT CATALOG:
 OUTPUT SCHEMA:
 {{
   "intent": {{ "summary": "...", "tags": ["..."] }},
+  "concurrency": 1,
   "subtasks": [
     {{
       "id": "t1",

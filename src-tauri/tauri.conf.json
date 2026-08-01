@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AgentMind",
+  "productName": "AgentFlow",
   "version": "1.0.0",
-  "identifier": "com.agentmind.app",
+  "identifier": "com.agentflow.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "AgentMind",
+        "title": "AgentFlow",
         "width": 1280,
         "height": 840,
         "minWidth": 1100,

@@ -1,6 +1,6 @@
 //! Shared process spawn + line streaming for engine adapters.
 use crate::db::now_iso8601;
-use crate::engines::adapter::{prepare_command, EngineRunRequest, LogEvent};
+use crate::engines::adapter::{prepare_command, EngineRunRequest, LogEvent, TokenUsage};
 use crate::engines::stream_decode::StreamDecoder;
 use rusqlite::Connection;
 use std::io::{BufRead, BufReader};
@@ -88,6 +88,7 @@ pub fn run_engine_unchecked<F>(
     cancel: &CancelToken,
     timeout: Option<Duration>,
     mut on_log: F,
+    mut on_usage: Option<&mut dyn FnMut(TokenUsage)>,
 ) -> Result<i32, String>
 where
     F: FnMut(LogEvent),
@@ -164,6 +165,12 @@ where
     let started = Instant::now();
     let heartbeat = Duration::from_secs(8);
 
+    let mut report_usage = |decoder: &Option<StreamDecoder>| {
+        if let Some(cb) = on_usage.as_mut() {
+            cb(decoder.as_ref().map(|d| d.usage()).unwrap_or_default());
+        }
+    };
+
     loop {
         let mut got = false;
         while let Ok(ev) = rx.try_recv() {
@@ -184,6 +191,7 @@ where
                     on_log(ev);
                 }
             }
+            report_usage(&decoder);
             emit(&mut on_log, "stderr", "[cancelled]");
             drop(guard);
             let _ = out_handle.join();
@@ -198,6 +206,7 @@ where
                         on_log(ev);
                     }
                 }
+                report_usage(&decoder);
                 emit(
                     &mut on_log,
                     "stderr",
@@ -230,6 +239,7 @@ where
                         on_log(ev);
                     }
                 }
+                report_usage(&decoder);
                 let code = status.code().unwrap_or(if status.success() { 0 } else { 1 });
                 return Ok(code);
             }
@@ -245,6 +255,7 @@ where
                 thread::sleep(Duration::from_millis(40));
             }
             Err(e) => {
+                report_usage(&decoder);
                 drop(guard);
                 return Err(format!("wait failed: {e}"));
             }
@@ -266,7 +277,7 @@ where
     let cwd = validate_imported_workspace(conn, &req.cwd)?;
     let mut req = req.clone();
     req.cwd = cwd;
-    run_engine_unchecked(&req, cancel, None, on_log)
+    run_engine_unchecked(&req, cancel, None, on_log, None)
 }
 
 fn emit<F: FnMut(LogEvent)>(on_log: &mut F, stream: &str, line: &str) {

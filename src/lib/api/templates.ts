@@ -165,6 +165,7 @@ export async function instantiateTemplate(args: {
   templateId: string;
   values: Record<string, string>;
   dispatch: boolean;
+  concurrency?: number | null;
 }): Promise<InstantiateTemplateResult> {
   if (!isTauri()) {
     throw new Error("instantiateTemplate requires Tauri runtime");
@@ -174,6 +175,7 @@ export async function instantiateTemplate(args: {
       template_id: args.templateId,
       values: args.values,
       dispatch: args.dispatch,
+      concurrency: args.concurrency ?? null,
     },
   });
 }

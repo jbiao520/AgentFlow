@@ -46,6 +46,9 @@ pub struct OrchestrateResult {
 pub struct ConfirmPlanAnswersArgs {
     pub plan_id: String,
     pub answers: Vec<PlanClarification>,
+    /// User override for this run only (1–8). Absent → use plan.concurrency / default.
+    #[serde(default)]
+    pub concurrency: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,7 +200,7 @@ pub async fn orchestrate(
                 }
                 stderr_buf.push_str(&ev.line);
             }
-        });
+        }, None);
         let raw = if stdout_buf.trim().is_empty() {
             stderr_buf
         } else {
@@ -285,7 +288,7 @@ pub fn confirm_plan_answers(
         state,
         runs,
         dispatch.run.id.clone(),
-        None,
+        args.concurrency,
     )?
     .started;
 

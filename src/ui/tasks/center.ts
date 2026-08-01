@@ -13,6 +13,7 @@ import {
   revealWorkspaceArtifact,
   retryNode,
   skipNode,
+  type DeliveryReport,
   type TaskLog,
   type TaskLogEvent,
   type TaskNode,
@@ -31,6 +32,10 @@ import {
 } from "./logs";
 import { showToast } from "../toast";
 import { confirmAction } from "../modals";
+import {
+  renderMarkdownInlineBlock,
+  setFormattedContent,
+} from "../format/content";
 
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -91,6 +96,19 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function truncate(s: string, max: number): string {
+  const t = s.trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, Math.max(0, max - 1))}…`;
+}
+
+/** Prefer goal prompt as display name; fall back to short run id. */
+function runDisplayName(run: TaskRun | undefined, runId: string): string {
+  const prompt = run?.goal_prompt?.trim();
+  if (prompt) return truncate(prompt, 48);
+  return `#${runId.slice(0, 8)}`;
+}
+
 function statusMeta(run: TaskRun): { label: string; color: string } {
   const pct = Math.round((run.progress || 0) * 100);
   switch (run.status) {
@@ -120,6 +138,130 @@ function parseArtifactPaths(node: TaskNode | undefined): string[] {
   } catch {
     return [];
   }
+}
+
+function parseDeliveryReport(run: TaskRun | null): DeliveryReport | null {
+  if (!run?.delivery_report_json) return null;
+  try {
+    const raw = JSON.parse(run.delivery_report_json) as Partial<DeliveryReport>;
+    return {
+      generated_at: typeof raw.generated_at === "string" ? raw.generated_at : "",
+      summary: typeof raw.summary === "string" ? raw.summary : "暂无结果摘要",
+      changed_files: Array.isArray(raw.changed_files) ? raw.changed_files : [],
+      diff: typeof raw.diff === "string" ? raw.diff : null,
+      artifacts: Array.isArray(raw.artifacts) ? raw.artifacts : [],
+      verification: Array.isArray(raw.verification) ? raw.verification : [],
+      risks: Array.isArray(raw.risks)
+        ? raw.risks.filter((risk): risk is string => typeof risk === "string")
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function renderDeliveryReport(run: TaskRun | null): void {
+  const summary = document.getElementById("task-delivery-summary");
+  const status = document.getElementById("task-delivery-status");
+  const files = document.getElementById("task-delivery-files");
+  const artifacts = document.getElementById("task-delivery-artifacts");
+  const verification = document.getElementById("task-delivery-verification");
+  const risks = document.getElementById("task-delivery-risks");
+  const diffDetails = document.getElementById("task-delivery-diff-details");
+  const diff = document.getElementById("task-delivery-diff");
+  const filesCount = document.getElementById("task-delivery-files-count");
+  const artifactsCount = document.getElementById("task-delivery-artifacts-count");
+  const verificationCount = document.getElementById("task-delivery-verification-count");
+  const risksCount = document.getElementById("task-delivery-risks-count");
+  if (!summary || !status || !files || !artifacts || !verification || !risks) return;
+
+  const report = parseDeliveryReport(run);
+  const active = run?.status === "running" || run?.status === "queued";
+  status.className = "delivery-status-badge";
+  if (active) {
+    status.classList.add("delivery-status-pending");
+    status.textContent = "生成中";
+    summary.innerHTML = renderMarkdownInlineBlock(
+      "任务执行中；完成后会自动生成验收摘要、改动 Diff、产物入口、验证结果和风险说明。",
+    );
+    files.innerHTML = artifacts.innerHTML = verification.innerHTML = risks.innerHTML =
+      '<div>任务完成后自动生成</div>';
+    if (filesCount) filesCount.textContent = "—";
+    if (artifactsCount) artifactsCount.textContent = "—";
+    if (verificationCount) verificationCount.textContent = "—";
+    if (risksCount) risksCount.textContent = "—";
+    if (diffDetails) diffDetails.style.display = "none";
+    return;
+  }
+  if (!report) {
+    status.classList.add("delivery-status-pending");
+    status.textContent = run ? "暂无报告" : "等待任务完成";
+    summary.innerHTML = renderMarkdownInlineBlock(
+      run
+        ? "该历史任务尚未生成验收报告。重新执行后会自动补齐。"
+        : "选择一个任务后，这里会自动汇总结果摘要、改动、产物、验证与风险。",
+    );
+    files.innerHTML = artifacts.innerHTML = verification.innerHTML = risks.innerHTML = "<div>—</div>";
+    if (filesCount) filesCount.textContent = "0";
+    if (artifactsCount) artifactsCount.textContent = "0";
+    if (verificationCount) verificationCount.textContent = "0";
+    if (risksCount) risksCount.textContent = "0";
+    if (diffDetails) diffDetails.style.display = "none";
+    return;
+  }
+
+  const hasFailure = run?.status === "failed" || run?.status === "cancelled";
+  status.classList.add(hasFailure ? "delivery-status-failed" : "delivery-status-ready");
+  status.textContent = hasFailure ? "需关注" : "可验收";
+  summary.innerHTML = renderMarkdownInlineBlock(report.summary);
+
+  if (filesCount) filesCount.textContent = String(report.changed_files.length);
+  files.innerHTML = report.changed_files.length
+    ? report.changed_files
+        .map(
+          (file) =>
+            `<div class="delivery-file-row"><span class="delivery-file-status">${escapeHtml(file.status)}</span><code>${escapeHtml(file.path)}</code><span style="color:var(--fg-muted);">· ${escapeHtml(file.workspace)}</span></div>`,
+        )
+        .join("")
+    : "<div>未检测到 Git 改动</div>";
+  if (diffDetails && diff) {
+    diffDetails.style.display = report.diff ? "block" : "none";
+    if (report.diff) {
+      setFormattedContent(diff, report.diff, "changes.diff");
+    } else {
+      diff.textContent = "";
+    }
+  }
+
+  if (artifactsCount) artifactsCount.textContent = String(report.artifacts.length);
+  artifacts.innerHTML = report.artifacts.length
+    ? report.artifacts
+        .map(
+          (artifact) =>
+            `<div class="delivery-file-row"><span class="delivery-check ${artifact.exists ? "passed" : "failed"}">${artifact.exists ? "✓" : "!"}</span><button type="button" class="delivery-artifact-link" data-delivery-node="${escapeHtml(artifact.node_id)}" data-delivery-path="${escapeHtml(artifact.path)}">${escapeHtml(artifact.path)}</button><span style="color:var(--fg-muted);">· ${escapeHtml(artifact.node_title)}</span></div>`,
+        )
+        .join("")
+    : "<div>未发现已登记产物</div>";
+
+  if (verificationCount) verificationCount.textContent = String(report.verification.length);
+  verification.innerHTML = report.verification.length
+    ? report.verification
+        .map(
+          (item) =>
+            `<div class="delivery-verification-row"><span class="delivery-check ${escapeHtml(item.status)}">${item.status === "passed" ? "✓" : item.status === "failed" ? "×" : "!"}</span><div class="delivery-verification-text"><div class="delivery-verification-label">${escapeHtml(item.label)}</div><div class="delivery-verification-detail">${renderMarkdownInlineBlock(item.detail)}</div></div></div>`,
+        )
+        .join("")
+    : "<div>暂无验证结果</div>";
+
+  if (risksCount) risksCount.textContent = String(report.risks.length);
+  risks.innerHTML = report.risks.length
+    ? report.risks
+        .map(
+          (risk) =>
+            `<div class="delivery-risk-row"><span>⚠</span><div class="delivery-risk-text">${renderMarkdownInlineBlock(risk)}</div></div>`,
+        )
+        .join("")
+    : '<div style="color:var(--accent-emerald);">未发现额外风险</div>';
 }
 
 function renderArtifactList(): void {
@@ -165,7 +307,11 @@ function clearArtifactPanel(message: string): void {
   const box = document.getElementById("artifact-content-box");
   const list = document.getElementById("artifact-path-list");
   if (label) label.textContent = "—";
-  if (box) box.textContent = message;
+  if (box) {
+    box.classList.add("fmt-host");
+    box.dataset.fmtKind = "text";
+    box.innerHTML = `<div class="fmt-empty">${escapeHtml(message)}</div>`;
+  }
   if (list) {
     list.innerHTML = `<div class="artifact-path-empty">${escapeHtml(message)}</div>`;
   }
@@ -179,12 +325,21 @@ async function selectArtifactPath(relPath: string): Promise<void> {
   const label = document.getElementById("artifact-path-label");
   const box = document.getElementById("artifact-content-box");
   if (label) label.textContent = relPath;
-  if (box) box.textContent = "加载中…";
+  if (box) {
+    box.classList.add("fmt-host");
+    box.innerHTML = `<div style="padding:12px 0; display:flex; flex-direction:column; gap:8px;">
+      <span class="skeleton-line" style="width:70%;"></span>
+      <span class="skeleton-line" style="width:90%;"></span>
+      <span class="skeleton-line" style="width:50%;"></span>
+    </div>`;
+  }
   renderArtifactList();
 
   if (!state.artifactAgentId) {
     state.artifactMissing = true;
-    if (box) box.textContent = "无法读取产物: 节点未绑定 Agent";
+    if (box) {
+      box.innerHTML = `<div class="fmt-empty">无法读取产物: 节点未绑定 Agent</div>`;
+    }
     renderArtifactList();
     return;
   }
@@ -193,13 +348,17 @@ async function selectArtifactPath(relPath: string): Promise<void> {
     const file = await readWorkspaceFile(state.artifactAgentId, relPath);
     state.artifactContent = file.content;
     state.artifactMissing = false;
-    if (box) box.textContent = file.content;
+    setFormattedContent(box, file.content, relPath);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     state.artifactContent = "";
     state.artifactMissing = true;
     if (box) {
-      box.textContent = `无法读取产物: ${msg}\n\n相对路径: ${relPath}\n可点「在 Finder 中显示」打开 workspace / artifacts 目录。`;
+      box.classList.add("fmt-host");
+      box.dataset.fmtKind = "text";
+      box.innerHTML = `<div class="fmt-empty">${escapeHtml(
+        `无法读取产物: ${msg}\n\n相对路径: ${relPath}\n可点「在 Finder 中显示」打开 workspace / artifacts 目录。`,
+      )}</div>`;
     }
   }
   renderArtifactList();
@@ -225,6 +384,15 @@ async function loadArtifactForNode(nodeId: string): Promise<void> {
   }
 
   await selectArtifactPath(paths[0]);
+}
+
+async function openDeliveryArtifact(nodeId: string, path: string): Promise<void> {
+  state.selectedNodeId = nodeId;
+  renderDagPanel();
+  await loadArtifactForNode(nodeId);
+  if (state.artifactPaths.includes(path)) {
+    await selectArtifactPath(path);
+  }
 }
 
 async function onRevealArtifact(): Promise<void> {
@@ -284,11 +452,11 @@ function renderHistory(): void {
     .map((run) => {
       const meta = statusMeta(run);
       const active = run.id === state.selectedRunId ? " active" : "";
-      const title = `#${run.id.slice(0, 8)} · ${run.status}`;
+      const title = runDisplayName(run, run.id);
       const started = run.started_at
         ? new Date(run.started_at).toLocaleString()
         : "—";
-      return `<div class="task-item-card${active}" data-run-id="${escapeHtml(run.id)}">
+      return `<div class="task-item-card${active}" data-run-id="${escapeHtml(run.id)}" title="${escapeHtml((run.goal_prompt || "").trim() || run.id)}">
         <div class="task-item-top">
           <div class="task-item-title">${escapeHtml(title)}</div>
           <button type="button" class="task-item-delete" data-delete-run="${escapeHtml(run.id)}" title="删除此任务" aria-label="删除此任务">删除</button>
@@ -358,6 +526,7 @@ async function selectRun(
     // keep cancelling flag only while the same run is still active
   }
   renderHistory();
+  renderDeliveryReport(state.runs.find((run) => run.id === runId) || null);
   syncCancelButton();
   try {
     const full = await getTaskRun(runId);
@@ -366,6 +535,11 @@ async function selectRun(
       showToast("Run 不存在");
       return;
     }
+    const runIndex = state.runs.findIndex((run) => run.id === full.run.id);
+    if (runIndex >= 0) state.runs[runIndex] = full.run;
+    else state.runs.unshift(full.run);
+    renderHistory();
+    renderDeliveryReport(full.run);
     state.nodes = full.nodes;
     const failed = full.nodes.find((n) => n.status === "failed");
     const running = full.nodes.find((n) => n.status === "running");
@@ -435,6 +609,7 @@ function clearRunDetail(): void {
   state.selectedNodeId = null;
   state.cancelling = false;
   renderHistory();
+  renderDeliveryReport(null);
   renderDagPanel();
   clearLogBody();
   clearArtifactPanel("选择任务查看产物");
@@ -445,12 +620,12 @@ async function onDeleteRun(runId: string): Promise<void> {
   if (state.deletedRunIds.has(runId)) return;
 
   const run = state.runs.find((r) => r.id === runId);
-  const label = `#${runId.slice(0, 8)}`;
+  const label = runDisplayName(run, runId);
   const active =
     run && (run.status === "running" || run.status === "queued");
   const msg = active
-    ? `任务 ${label} 仍在执行，删除将取消并清除记录。确定？`
-    : `确定删除任务 ${label}？节点与日志将一并清除。`;
+    ? `任务「${label}」仍在执行，删除将取消并清除记录。确定？`
+    : `确定删除任务「${label}」？节点与日志将一并清除。`;
   try {
     const confirmed = await confirmAction(msg, {
       title: "删除执行历史",
@@ -560,7 +735,7 @@ async function onCancelRun(): Promise<void> {
   const runId = run.id;
   try {
     const confirmed = await confirmAction(
-      `确认取消任务 #${runId.slice(0, 8)}？\n正在执行的节点将被终止，未开始的节点将标记为跳过。`,
+      `确认取消任务「${runDisplayName(run, runId)}」？\n正在执行的节点将被终止，未开始的节点将标记为跳过。`,
       {
         title: "取消执行任务",
         confirmLabel: "确认取消",
@@ -652,6 +827,7 @@ async function subscribeEvents(): Promise<void> {
     }
     renderHistory();
     if (run.id === state.selectedRunId) {
+      renderDeliveryReport(run);
       state.nodes = ev.payload.nodes;
       renderDagPanel();
       if (state.selectedNodeId) {
@@ -721,6 +897,13 @@ export function initTaskCenter(): void {
       () => showToast("复制失败"),
     );
   });
+  document.getElementById("task-delivery-panel")?.addEventListener("click", (ev) => {
+    const target = eventElement(ev)?.closest("[data-delivery-node]");
+    if (!(target instanceof HTMLElement)) return;
+    const nodeId = target.getAttribute("data-delivery-node");
+    const path = target.getAttribute("data-delivery-path");
+    if (nodeId && path) void openDeliveryArtifact(nodeId, path);
+  });
   document
     .getElementById("btn-reveal-artifact")
     ?.addEventListener("click", () => {
@@ -735,7 +918,7 @@ export function initTaskCenter(): void {
     showToast(state.streamPaused ? "已暂停日志流" : "已恢复日志流");
   });
 
-  window.addEventListener("agentmind:run-started", ((ev: CustomEvent) => {
+  window.addEventListener("agentflow:run-started", ((ev: CustomEvent) => {
     const runId = (ev.detail as { runId?: string })?.runId;
     void refreshTaskHistory(runId);
   }) as EventListener);

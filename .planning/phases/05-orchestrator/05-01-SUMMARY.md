@@ -18,7 +18,7 @@
 ## Decisions Made
 - Added `orchestrate_from_json` fixture path alongside live CLI (plan tip for flaky CI)
 - Invalid skills dropped with warnings; unknown agents hard-fail validation
-- Orchestrator CLI cwd = `~/Library/Application Support/AgentMind/orchestrator/` (not an agent workspace)
+- Orchestrator CLI cwd = `~/Library/Application Support/AgentFlow/orchestrator/` (not an agent workspace)
 
 ## Deviations from Plan
 None - plan executed as written (fixture path is an additive tip from the mandate)

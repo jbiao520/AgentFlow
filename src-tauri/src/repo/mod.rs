@@ -5,6 +5,7 @@ pub mod schedules;
 pub mod skills;
 pub mod tasks;
 pub mod templates;
+pub mod usage;
 
 pub use agents::*;
 pub use cli_status::*;
@@ -13,3 +14,4 @@ pub use schedules::*;
 pub use skills::*;
 pub use tasks::*;
 pub use templates::*;
+pub use usage::*;

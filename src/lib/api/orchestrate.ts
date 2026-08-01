@@ -41,6 +41,8 @@ export type PlanClarification = {
 export type PlanAnalysis = {
   intent: PlanIntent;
   subtasks: PlanSubtask[];
+  /** Max ready nodes in parallel (1–8). Absent → runner default 1. */
+  concurrency?: number | null;
   questions?: PlanQuestion[];
   clarifications?: PlanClarification[];
 };
@@ -109,11 +111,16 @@ export async function orchestrateFromJson(
 export async function confirmPlanAnswers(
   planId: string,
   answers: PlanClarification[],
+  concurrency?: number | null,
 ): Promise<ConfirmPlanAnswersResult> {
   if (!isTauri()) {
     throw new Error("confirmPlanAnswers requires Tauri runtime");
   }
   return invoke<ConfirmPlanAnswersResult>("confirm_plan_answers", {
-    args: { plan_id: planId, answers },
+    args: {
+      plan_id: planId,
+      answers,
+      concurrency: concurrency ?? null,
+    },
   });
 }

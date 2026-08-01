@@ -1,11 +1,24 @@
 <div class="app-window" data-od-id="app-window">
-  <!-- Compact top search overlay -->
+  <!-- macOS Application Titlebar -->
   <div class="titlebar" data-od-id="app-titlebar">
+    <div class="titlebar-left">
+      <div class="app-brand">
+        <span class="app-brand-dot"></span>
+        <span class="app-brand-name">AgentFlow</span>
+        <span class="app-brand-badge">v0.1.0</span>
+      </div>
+    </div>
     <div class="titlebar-actions">
-      <div class="cmd-k-trigger" data-od-id="cmd-k-btn" role="button" tabindex="0" title="搜索 Agent 或快捷指令">
+      <div class="cmd-k-trigger" data-od-id="cmd-k-btn" role="button" tabindex="0" title="搜索 Agent 或快捷指令 (⌘K)">
         <svg class="cmd-k-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <span>搜索</span>
+        <span>搜索 Agent 或快捷指令...</span>
         <span class="cmd-kbd">⌘K</span>
+      </div>
+    </div>
+    <div class="titlebar-right">
+      <div class="sys-status-badge" id="app-sys-status" title="SQLite 核心数据库与系统连通状态">
+        <span class="status-dot"></span>
+        <span class="sys-status-text">系统就绪</span>
       </div>
     </div>
   </div>
@@ -15,14 +28,14 @@
     <!-- Sidebar Navigation -->
     <aside class="sidebar" data-od-id="app-sidebar">
       <div>
-        <div class="nav-section-title">Views</div>
+        <div class="nav-section-title">视图工作区</div>
         <ul class="nav-list">
           <li class="nav-item active" data-view="overview" data-od-id="nav-overview" role="button" tabindex="0">
             <div class="nav-item-left">
               <span class="nav-icon">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg>
               </span>
-              <span>Dashboard</span>
+              <span>全局总览</span>
             </div>
             <span class="nav-count" id="nav-count-overview">0</span>
           </li>
@@ -31,7 +44,7 @@
               <span class="nav-icon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M4 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7z"/><circle cx="9" cy="15" r="1"/><circle cx="15" cy="15" r="1"/></svg>
               </span>
-              <span>Agents</span>
+              <span>Agent 矩阵</span>
             </div>
             <span class="nav-count" id="nav-count-agents">0</span>
           </li>
@@ -42,7 +55,7 @@
               </span>
               <span>调度中枢</span>
             </div>
-            <span class="nav-count" style="background: rgba(37,99,235,0.12); color:#2563eb;">Hub</span>
+            <span class="nav-count nav-count-hub">Hub</span>
           </li>
           <li class="nav-item" data-view="tasks" data-od-id="nav-tasks" role="button" tabindex="0">
             <div class="nav-item-left">
@@ -51,7 +64,7 @@
               </span>
               <span>任务中心</span>
             </div>
-            <span class="nav-count" id="nav-count-tasks" style="background: rgba(217,119,6,0.12); color:#b45309;">0 运行</span>
+            <span class="nav-count nav-count-tasks" id="nav-count-tasks">0 运行</span>
           </li>
           <li class="nav-item" data-view="templates" data-od-id="nav-templates" role="button" tabindex="0">
             <div class="nav-item-left">
@@ -67,20 +80,25 @@
               <span class="nav-icon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               </span>
-              <span>Schedules</span>
+              <span>定时调度</span>
             </div>
             <span class="nav-count" id="nav-count-schedules">0</span>
           </li>
         </ul>
       </div>
 
-      <!-- CLI Engine Status — click to re-probe -->
-      <div class="cli-engine-widget" data-od-id="cli-widget" title="点击刷新 CLI 状态">
-        <div id="cli-engine-list">
-          <div class="cli-item" data-engine="cursor-agent"><div class="cli-name"><div class="status-dot working"></div>cursor</div></div>
-          <div class="cli-item" data-engine="codex"><div class="cli-name"><div class="status-dot working"></div>codex</div></div>
-          <div class="cli-item" data-engine="opencode"><div class="cli-name"><div class="status-dot working"></div>opencode</div></div>
-        </div>
+      <!-- Settings pinned to sidebar bottom -->
+      <div class="sidebar-footer">
+        <ul class="nav-list">
+          <li class="nav-item" data-view="settings" data-od-id="nav-settings" role="button" tabindex="0">
+            <div class="nav-item-left">
+              <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </span>
+              <span>设置</span>
+            </div>
+          </li>
+        </ul>
       </div>
     </aside>
 
@@ -93,8 +111,8 @@
       <div id="view-overview" class="view-pane active" data-od-id="view-overview">
         <div class="page-header">
           <div>
-            <h1 class="page-title">Dashboard</h1>
-            <p class="page-desc">掌控个人 AI 执行系统的 Agent 指标、协同拓扑与自动化调度队列。</p>
+            <h1 class="page-title">全局总览</h1>
+            <p class="page-desc">掌控个人 AI 执行系统的 Agent 指标、近期调用与自动化调度队列。</p>
           </div>
           <button class="btn btn-primary" onclick="switchView('commander', document.querySelector('[data-od-id=nav-commander]'))" data-od-id="overview-new-task-btn">
             <span>发起调度任务</span>
@@ -104,7 +122,7 @@
         <!-- Sleek Segmented Stats Panel -->
         <div class="stats-bar" data-od-id="overview-stats">
           <div class="stat-item">
-            <div class="stat-label">注册 Agents</div>
+            <div class="stat-label">注册 Agent 矩阵</div>
             <div class="stat-value" id="overview-stat-agents">—</div>
             <div class="stat-sub" id="overview-stat-agents-sub">
               <span class="status-dot" style="background:var(--accent-emerald);"></span> —
@@ -113,7 +131,7 @@
           <div class="stat-item">
             <div class="stat-label">运行中自动化任务</div>
             <div class="stat-value" id="overview-stat-running" style="color: var(--accent-amber);">—</div>
-            <div class="stat-sub" id="overview-stat-running-sub">加载中…</div>
+            <div class="stat-sub" id="overview-stat-running-sub"><span class="skeleton-line" style="width: 70px;"></span></div>
           </div>
           <div class="stat-item">
             <div class="stat-label">今日完成调度</div>
@@ -121,23 +139,25 @@
             <div class="stat-sub" id="overview-stat-completed-sub" style="color:var(--accent-emerald);">—</div>
           </div>
           <div class="stat-item">
-            <div class="stat-label">Token & Reasoning 消耗</div>
-            <div class="stat-value" id="overview-stat-tokens">n/a</div>
-            <div class="stat-sub" id="overview-stat-tokens-sub" style="color:#7c3aed;">未计量 (v1)</div>
+            <div class="stat-label">Token 消耗 · 费用估算</div>
+            <div class="stat-value" id="overview-stat-tokens">0</div>
+            <div class="stat-sub" id="overview-stat-tokens-sub" style="color:var(--accent-purple);"><span class="skeleton-line" style="width: 80px;"></span></div>
           </div>
         </div>
 
-        <!-- Global Collaboration Topology Graph Card -->
-        <div class="card-panel" data-od-id="panel-topology">
+        <!-- Recent Agents Usage -->
+        <div class="card-panel" data-od-id="panel-recent-agents">
           <div class="panel-title-bar">
             <div class="panel-title">
-              <span>Agent 协同拓扑图</span>
+              <span>最近常用 Agent</span>
             </div>
-            <span id="overview-topology-caption" style="font-size:11px; color:var(--fg-muted); font-family:var(--font-mono);">加载中…</span>
+            <span id="overview-recent-caption" style="font-size:11px; color:var(--fg-muted); font-family:var(--font-mono);"><span class="skeleton-line" style="width: 100px;"></span></span>
           </div>
-
-          <div class="topology-container">
-            <svg id="overview-topology-svg" class="topology-canvas" viewBox="0 0 900 250"></svg>
+          <div id="overview-recent-body">
+            <div class="recent-agents-empty">
+              <span class="skeleton-line" style="width: 70%;"></span>
+              <span class="skeleton-line" style="width: 45%; margin-top:8px;"></span>
+            </div>
           </div>
         </div>
 
@@ -160,7 +180,12 @@
             </thead>
             <tbody id="overview-queue-body">
               <tr>
-                <td colspan="5" style="padding:16px 10px; color:var(--fg-muted); text-align:center;">加载中…</td>
+                <td colspan="5" style="padding:16px 10px;">
+                  <div style="display:flex; flex-direction:column; gap:8px;">
+                    <span class="skeleton-line" style="width: 85%;"></span>
+                    <span class="skeleton-line" style="width: 65%;"></span>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -173,7 +198,7 @@
       <div id="view-agents" class="view-pane" data-od-id="view-agents">
         <div class="page-header">
           <div>
-            <h1 class="page-title">Agents</h1>
+            <h1 class="page-title">Agent 矩阵</h1>
             <p class="page-desc">每个 Agent 绑定一个工作区 Workspace，技能从工作区内部配置自动感知。点击卡片进入详情配置。</p>
           </div>
           <button class="btn btn-primary" onclick="openImportModal()">
@@ -213,10 +238,10 @@
         <div class="page-header">
           <div>
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-              <button type="button" class="btn btn-secondary btn-sm" id="btn-back-to-agents" title="返回 Agents">← Agents</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-back-to-agents" title="返回 Agent 矩阵">← Agent 矩阵</button>
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
-              <h1 class="page-title" id="detail-agent-name" style="font-family:var(--font-mono);">web-browser-ops</h1>
+              <h1 class="page-title" id="detail-agent-name" style="font-family:var(--font-mono);">选择 Agent</h1>
               <span class="agent-status-badge badge-working" id="detail-agent-status">Working</span>
             </div>
             <p class="page-desc" id="detail-agent-repo">绑定工作区: github.com/user/web-ops-scripts · 分支: main</p>
@@ -259,25 +284,6 @@
               <label class="form-label">Reasoning Effort (推理深度)</label>
               <div class="reasoning-pills" id="detail-reasoning-pills" data-field="reasoning_effort">
               </div>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Temperature (随机温度)</label>
-              <div class="range-group">
-                <input type="range" min="0" max="1" step="0.05" value="0.2" class="range-input" id="detail-temperature" data-field="temperature" />
-                <span class="range-val" id="temp-val">0.2</span>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
-                <label class="form-label" style="margin-bottom:0;">自动按任务路由</label>
-                <label class="switch">
-                  <input type="checkbox" id="detail-auto-route" data-field="auto_route" checked>
-                  <span class="slider"></span>
-                </label>
-              </div>
-              <p style="font-size:11px; color:var(--fg-muted);">遇到复杂 DOM 或验证码时自动提升 Reasoning Effort。</p>
             </div>
 
           </div>
@@ -324,64 +330,69 @@
       <!-- ===================================================================
            VIEW 4: DISPATCH HUB WORKBENCH
            =================================================================== -->
-      <div id="view-commander" class="view-pane" data-od-id="view-commander">
-        <div class="page-header">
-          <div>
-            <h1 class="page-title">调度中枢</h1>
-            <p class="page-desc">输入综合自动化目标，调度中枢将自动分析意图、拆解任务、匹配 Agent/Skill 并路由分发。</p>
-          </div>
-        </div>
-
-        <!-- Orchestrator brain settings (independent of worker agents) -->
-        <div class="orch-settings-panel card-panel" data-od-id="orch-settings-panel" style="margin-bottom:14px;">
-          <div class="panel-title-bar">
-            <div class="panel-title">调度中枢配置 (Orchestrator)</div>
-            <button type="button" class="btn btn-secondary btn-sm" id="btn-save-orch-settings">保存配置</button>
-          </div>
-          <div class="orch-settings-grid">
-            <div class="form-group" style="margin:0;">
-              <label class="form-label" for="orch-cli-select">CLI Engine</label>
-              <select class="form-select" id="orch-cli-select">
-                <option value="cursor-agent">Cursor Agent</option>
-                <option value="codex">Codex</option>
-                <option value="opencode">OpenCode</option>
-              </select>
+      <div id="view-commander" class="view-pane commander-view" data-od-id="view-commander">
+        <header class="commander-hero">
+          <div class="commander-hero-glow" aria-hidden="true"></div>
+          <div class="commander-hero-main">
+            <div class="commander-hero-badge">
+              <span class="commander-hero-badge-dot" aria-hidden="true"></span>
+              Orchestrator Hub
             </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label" for="orch-model-select">Model</label>
-              <select class="form-select" id="orch-model-select">
-                <option value="">加载模型中…</option>
-              </select>
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">Reasoning</label>
-              <div class="reasoning-pills" id="orch-reasoning-pills">
-              </div>
-            </div>
+            <h1 class="page-title commander-hero-title">调度中枢</h1>
+            <p class="page-desc commander-hero-desc">
+              描述你的综合自动化目标，中枢将完成意图分析、任务拆解、Agent / Skill 路由，并一键分发执行。
+            </p>
           </div>
-          <details style="margin-top:10px;">
-            <summary style="font-size:11px; color:var(--fg-muted); cursor:pointer;">高级：从 JSON 夹具编排（跳过实时 CLI）</summary>
-            <textarea id="orch-fixture-json" class="form-textarea" rows="4" placeholder='粘贴 Plan JSON（SPEC §7.4）后点 Orchestrate' style="margin-top:6px; font-family:var(--font-mono); font-size:11px;"></textarea>
-          </details>
-        </div>
+          <ol class="commander-pipeline" aria-label="调度流程">
+            <li class="commander-pipeline-step">
+              <span class="commander-pipeline-num">01</span>
+              <span class="commander-pipeline-label">意图分析</span>
+            </li>
+            <li class="commander-pipeline-step">
+              <span class="commander-pipeline-num">02</span>
+              <span class="commander-pipeline-label">任务拆解</span>
+            </li>
+            <li class="commander-pipeline-step">
+              <span class="commander-pipeline-num">03</span>
+              <span class="commander-pipeline-label">路由匹配</span>
+            </li>
+            <li class="commander-pipeline-step">
+              <span class="commander-pipeline-num">04</span>
+              <span class="commander-pipeline-label">分发执行</span>
+            </li>
+          </ol>
+        </header>
 
         <!-- High-level Prompt Input Box -->
-        <div class="commander-prompt-box" data-od-id="commander-prompt-box">
-          <textarea class="commander-input" id="commander-prompt-text" placeholder="输入综合自动化与运营目标..."></textarea>
-          
+        <section class="commander-prompt-box" data-od-id="commander-prompt-box">
+          <div class="commander-prompt-label">
+            <span class="commander-prompt-label-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3z"/></svg>
+            </span>
+            <span>自动化目标</span>
+            <span class="commander-prompt-hint">尽量写清对象、频率与验收标准</span>
+          </div>
+          <textarea class="commander-input" id="commander-prompt-text" placeholder="例如：每天 9 点巡检官网关键页与核心 API，失败时汇总截图并通知值班；或：监控三家竞品价格，发现降价 5% 以上时生成对比简报…" rows="4"></textarea>
+
           <div class="commander-bar-footer">
             <div class="template-chips">
-              <span style="font-size:11px; color:var(--fg-muted); align-self:center;">快捷模版：</span>
-              <span class="chip-item" onclick="fillCommanderTemplate(1)">全网竞品价格监控</span>
-              <span class="chip-item" onclick="fillCommanderTemplate(2)">每日网站巡检测试</span>
-              <span class="chip-item" onclick="fillCommanderTemplate(3)">跨平台文章自动排版发布</span>
+              <span class="template-chips-label">快捷示例</span>
+              <button type="button" class="chip-item" onclick="fillCommanderTemplate(1)">全网竞品价格监控</button>
+              <button type="button" class="chip-item" onclick="fillCommanderTemplate(2)">每日网站巡检测试</button>
+              <button type="button" class="chip-item" onclick="fillCommanderTemplate(3)">跨平台文章自动排版发布</button>
             </div>
 
-            <button class="btn btn-primary" type="button" id="start-orch-btn" data-od-id="start-orch-btn">
-              <span>启动智能调度拆解 (Orchestrate)</span>
+            <button class="btn btn-primary commander-run-btn" type="button" id="start-orch-btn" data-od-id="start-orch-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>启动智能调度拆解</span>
             </button>
           </div>
-        </div>
+
+          <details class="orch-advanced" style="margin-top:14px;">
+            <summary class="orch-advanced-summary">高级：从 JSON 夹具编排（跳过实时 CLI）</summary>
+            <textarea id="orch-fixture-json" class="form-textarea orch-fixture-input" rows="4" placeholder="粘贴 Plan JSON（SPEC §7.4）后点 Orchestrate"></textarea>
+          </details>
+        </section>
 
         <!-- Orchestration Workflow Flow (filled by workbench.ts) -->
         <div id="orch-results" class="orchestration-flow" data-od-id="orch-results" style="display:none;"></div>
@@ -412,6 +423,36 @@
           </div>
 
           <div style="display:flex; flex-direction:column; gap:14px; overflow-y:auto;">
+            <div class="card-panel delivery-card" id="task-delivery-panel">
+              <div class="panel-title-bar">
+                <div class="panel-title">验收交付物</div>
+                <span class="delivery-status-badge delivery-status-pending" id="task-delivery-status">等待任务完成</span>
+              </div>
+              <div class="delivery-summary" id="task-delivery-summary">选择一个任务后，这里会自动汇总结果摘要、改动、产物、验证与风险。</div>
+              <div class="delivery-grid">
+                <section class="delivery-section">
+                  <div class="delivery-section-title">改动文件 / Diff <span class="delivery-section-count" id="task-delivery-files-count">0</span></div>
+                  <div id="task-delivery-files" class="delivery-section-body">—</div>
+                  <details class="delivery-diff-details" id="task-delivery-diff-details" style="display:none;">
+                    <summary>查看 Diff</summary>
+                    <div class="diff-box fmt-host" id="task-delivery-diff" data-fmt-kind="diff"></div>
+                  </details>
+                </section>
+                <section class="delivery-section">
+                  <div class="delivery-section-title">产物入口 <span class="delivery-section-count" id="task-delivery-artifacts-count">0</span></div>
+                  <div id="task-delivery-artifacts" class="delivery-section-body">—</div>
+                </section>
+                <section class="delivery-section">
+                  <div class="delivery-section-title">验证结果 <span class="delivery-section-count" id="task-delivery-verification-count">0</span></div>
+                  <div id="task-delivery-verification" class="delivery-section-body">—</div>
+                </section>
+                <section class="delivery-section">
+                  <div class="delivery-section-title">失败 / 风险 <span class="delivery-section-count" id="task-delivery-risks-count">0</span></div>
+                  <div id="task-delivery-risks" class="delivery-section-body">—</div>
+                </section>
+              </div>
+            </div>
+
             <div class="card-panel" style="margin-bottom:0;">
               <div class="panel-title-bar">
                 <div class="panel-title">任务依赖拓扑图 (Task DAG)</div>
@@ -456,7 +497,7 @@
                 </div>
                 <div class="artifact-preview">
                   <div id="artifact-path-label" class="artifact-path-label">—</div>
-                  <pre class="diff-box artifact-content-box" id="artifact-content-box">Select a node with artifacts to preview.</pre>
+                  <div class="diff-box artifact-content-box fmt-host" id="artifact-content-box" data-fmt-kind="text"><div class="fmt-empty">Select a node with artifacts to preview.</div></div>
                 </div>
               </div>
             </div>
@@ -500,7 +541,7 @@
       <div id="view-schedules" class="view-pane" data-od-id="view-schedules" aria-hidden="true">
         <div class="page-header">
           <div>
-            <h1 class="page-title">Schedules</h1>
+            <h1 class="page-title">定时调度</h1>
             <p class="page-desc">按指定时间执行一次，或按间隔多次自动跑某个模版。</p>
           </div>
           <div style="display:flex; gap:8px;">
@@ -509,15 +550,164 @@
           </div>
         </div>
 
-        <div class="task-split-layout">
-          <div class="task-list-panel">
-            <div class="task-list-header">
-              <span>定时任务 <span id="schedule-list-count" style="font-size:11px; font-weight:normal; color:var(--fg-muted);">共 0 个</span></span>
+        <div class="sched-split">
+          <aside class="sched-sidebar">
+            <div class="sched-sidebar-header">
+              <span>定时任务 <span id="schedule-list-count" class="sched-sidebar-count">共 0 个</span></span>
             </div>
-            <div id="schedule-list"></div>
+            <div id="schedule-list" class="sched-sidebar-list"></div>
+          </aside>
+          <div class="sched-detail-panel" id="schedule-detail">
+            <div class="sched-detail-empty">
+              <div class="sched-detail-empty-title">选择一个定时任务</div>
+              <div class="sched-detail-empty-desc">查看下次执行时间、编辑调度策略，或点击「新建定时任务」。</div>
+            </div>
           </div>
-          <div class="card-panel" id="schedule-detail" style="margin:0; overflow-y:auto;">
-            <div style="padding:24px; color:var(--fg-muted); font-size:13px;">选择左侧任务查看详情，或点击「新建定时任务」。</div>
+        </div>
+      </div>
+
+      <!-- ===================================================================
+           VIEW 8: SETTINGS
+           =================================================================== -->
+      <div id="view-settings" class="view-pane" data-od-id="view-settings" aria-hidden="true">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">设置</h1>
+            <p class="page-desc">管理中枢大脑、CLI 引擎状态与应用信息。</p>
+          </div>
+        </div>
+
+        <div class="settings-layout">
+          <aside class="settings-nav" aria-label="设置分区">
+            <button type="button" class="settings-nav-item active" data-settings-section="brain" role="tab" aria-selected="true">
+              <span class="settings-nav-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </span>
+              <span class="settings-nav-text">
+                <span class="settings-nav-label">中枢大脑</span>
+                <span class="settings-nav-hint">CLI / 模型 / Reasoning</span>
+              </span>
+            </button>
+            <button type="button" class="settings-nav-item" data-settings-section="cli" role="tab" aria-selected="false">
+              <span class="settings-nav-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              </span>
+              <span class="settings-nav-text">
+                <span class="settings-nav-label">CLI 引擎</span>
+                <span class="settings-nav-hint">探测与可用性</span>
+              </span>
+            </button>
+            <button type="button" class="settings-nav-item" data-settings-section="about" role="tab" aria-selected="false">
+              <span class="settings-nav-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              </span>
+              <span class="settings-nav-text">
+                <span class="settings-nav-label">关于</span>
+                <span class="settings-nav-hint">版本与数据目录</span>
+              </span>
+            </button>
+          </aside>
+
+          <div class="settings-content">
+            <!-- Brain -->
+            <section class="settings-panel active" id="settings-panel-brain" data-settings-panel="brain" role="tabpanel">
+              <div class="orch-settings-panel" data-od-id="orch-settings-panel">
+                <div class="orch-settings-head">
+                  <div class="orch-settings-title-wrap">
+                    <span class="orch-settings-icon" aria-hidden="true">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    </span>
+                    <div>
+                      <div class="orch-settings-title">中枢大脑配置</div>
+                      <div class="orch-settings-sub">独立于 Worker Agent · 决定拆解与路由所用的 CLI / 模型</div>
+                    </div>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-save-orch-settings">保存配置</button>
+                </div>
+                <div class="orch-settings-grid">
+                  <div class="form-group orch-settings-field">
+                    <label class="form-label" for="orch-cli-select">CLI Engine</label>
+                    <select class="form-select" id="orch-cli-select">
+                      <option value="cursor-agent">Cursor Agent</option>
+                      <option value="codex">Codex</option>
+                      <option value="opencode">OpenCode</option>
+                    </select>
+                  </div>
+                  <div class="form-group orch-settings-field">
+                    <label class="form-label" for="orch-model-select">Model</label>
+                    <select class="form-select" id="orch-model-select">
+                      <option value="">加载模型中…</option>
+                    </select>
+                  </div>
+                  <div class="form-group orch-settings-field">
+                    <label class="form-label">Reasoning</label>
+                    <div class="reasoning-pills" id="orch-reasoning-pills"></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- CLI Engines -->
+            <section class="settings-panel" id="settings-panel-cli" data-settings-panel="cli" role="tabpanel" hidden>
+              <div class="settings-section-card">
+                <div class="orch-settings-head">
+                  <div class="orch-settings-title-wrap">
+                    <span class="orch-settings-icon" aria-hidden="true">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    </span>
+                    <div>
+                      <div class="orch-settings-title">CLI 引擎状态</div>
+                      <div class="orch-settings-sub">探测本机已安装的执行引擎及其版本</div>
+                    </div>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-probe-cli-engines">重新探测</button>
+                </div>
+                <div id="cli-engine-list" class="settings-cli-list" data-od-id="cli-widget">
+                  <div class="settings-cli-empty">加载中…</div>
+                </div>
+              </div>
+            </section>
+
+            <!-- About -->
+            <section class="settings-panel" id="settings-panel-about" data-settings-panel="about" role="tabpanel" hidden>
+              <div class="settings-section-card">
+                <div class="orch-settings-head">
+                  <div class="orch-settings-title-wrap">
+                    <span class="orch-settings-icon" aria-hidden="true">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    </span>
+                    <div>
+                      <div class="orch-settings-title">关于 AgentMind</div>
+                      <div class="orch-settings-sub">版本信息与本地数据目录</div>
+                    </div>
+                  </div>
+                </div>
+                <dl class="settings-about-list">
+                  <div class="settings-about-row">
+                    <dt>应用名称</dt>
+                    <dd id="settings-about-name">—</dd>
+                  </div>
+                  <div class="settings-about-row">
+                    <dt>版本</dt>
+                    <dd id="settings-about-version">—</dd>
+                  </div>
+                  <div class="settings-about-row">
+                    <dt>Tauri</dt>
+                    <dd id="settings-about-tauri">—</dd>
+                  </div>
+                  <div class="settings-about-row">
+                    <dt>数据库</dt>
+                    <dd class="settings-about-path-row">
+                      <span id="settings-about-db-path" class="settings-mono-path">—</span>
+                      <span id="settings-about-db-ok" class="settings-db-badge">—</span>
+                    </dd>
+                  </div>
+                </dl>
+                <div class="settings-about-actions">
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-reveal-db-path" disabled>在 Finder 中显示数据库</button>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </div>
@@ -547,7 +737,7 @@
 
     <div class="form-group">
       <label class="form-label">Agent 标识名称</label>
-      <input type="text" id="import-agent-name" class="form-input" placeholder="例如: web-browser-ops" />
+      <input type="text" id="import-agent-name" class="form-input" placeholder="例如: my-ops-agent" />
     </div>
 
     <div class="form-group">

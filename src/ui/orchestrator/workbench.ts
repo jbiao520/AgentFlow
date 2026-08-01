@@ -11,8 +11,15 @@ import {
   type PlanQuestion,
 } from "../../lib/api/orchestrate";
 import { dispatchPlan, startRun } from "../../lib/api/tasks";
+import {
+  concurrencyControlHtml,
+  planSuggestedConcurrency,
+  readConcurrencySelect,
+} from "../concurrency";
 import { showView } from "../router";
 import { formatActionableError, showToast } from "../toast";
+
+const CONC_SELECT_ID = "orch-concurrency";
 
 export type WorkbenchState = {
   result: OrchestrateResult | null;
@@ -59,7 +66,7 @@ function escapeHtml(s: string): string {
 function agentColor(name: string): string {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  const palette = ["#d97706", "#2563eb", "#059669", "#7c3aed", "#dc2626"];
+  const palette = ["#d97706", "#4f46e5", "#059669", "#0284c7", "#dc2626"];
   return palette[h % palette.length];
 }
 
@@ -71,7 +78,7 @@ async function goToTaskRun(runId: string, nodeCount: number): Promise<void> {
   showToast(`已分发 ${nodeCount} 个节点，开始执行`, { kind: "success" });
   showView("tasks");
   window.dispatchEvent(
-    new CustomEvent("agentmind:run-started", {
+    new CustomEvent("agentflow:run-started", {
       detail: { runId },
     }),
   );
@@ -91,8 +98,10 @@ async function dispatchCurrentPlan(): Promise<void> {
     return;
   }
   try {
+    const suggested = planSuggestedConcurrency(state.result?.plan);
+    const concurrency = readConcurrencySelect(CONC_SELECT_ID, suggested);
     const dispatched = await dispatchPlan(planId);
-    await startRun(dispatched.run.id);
+    await startRun(dispatched.run.id, concurrency);
     await goToTaskRun(dispatched.run.id, dispatched.nodes.length);
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);
@@ -150,7 +159,9 @@ async function submitClarifications(
   }
 
   try {
-    const result = await confirmPlanAnswers(planId, answers);
+    const suggested = planSuggestedConcurrency(state.result?.plan);
+    const concurrency = readConcurrencySelect(CONC_SELECT_ID, suggested);
+    const result = await confirmPlanAnswers(planId, answers, concurrency);
     if (state.result) {
       state.result.plan = result.plan;
     }
@@ -187,16 +198,19 @@ function renderClarifyPanel(questions: PlanQuestion[]): string {
     .join("");
 
   return `<div class="orch-step-card orch-clarify-card" id="orch-clarify-panel">
-    <div class="step-number">?</div>
+    <div class="step-number is-clarify">?</div>
     <div class="step-content">
       <div class="step-header">
-        <div class="step-title">澄清问答 (${questions.length})</div>
-        <span style="font-size:11px; color:var(--fg-muted);">单选 + 可选补充 · 提交后直接执行</span>
+        <div class="step-title">澄清问答 · ${questions.length} 项</div>
+        <span class="step-header-meta">单选 + 可选补充 · 提交后直接执行</span>
       </div>
       <div class="clarify-list">${items}</div>
     </div>
   </div>`;
 }
+
+const ORCH_RUN_BTN_HTML =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>启动智能调度拆解</span>';
 
 export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): void {
   const root = document.getElementById("orch-results");
@@ -205,28 +219,40 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
   const questions = planQuestions(plan);
   const needsClarify = questions.length > 0;
 
-  const tags = plan.intent.tags
-    .map(
-      (t) =>
-        `<span class="skill-tag" style="background:rgba(5,150,105,0.1); color:#047857;">${escapeHtml(t)}</span>`,
-    )
-    .join(" ");
+  const tags =
+    plan.intent.tags.length > 0
+      ? `<div class="step-tags">${plan.intent.tags
+          .map(
+            (t) =>
+              `<span class="skill-tag" style="background:rgba(5,150,105,0.1); color:#047857; border-color:rgba(5,150,105,0.18);">${escapeHtml(t)}</span>`,
+          )
+          .join("")}</div>`
+      : "";
 
   const subtaskLines = plan.subtasks
-    .map(
-      (st, i) =>
-        `<div style="margin-bottom:3px;">${i + 1}. [${escapeHtml(st.agent)}] ${escapeHtml(st.title)}</div>`,
-    )
+    .map((st, i) => {
+      const color = agentColor(st.agent);
+      return `<div class="orch-subtask-item">
+        <span class="orch-subtask-idx">${String(i + 1).padStart(2, "0")}</span>
+        <div class="orch-subtask-body">
+          <div class="orch-subtask-title">${escapeHtml(st.title)}</div>
+          <div class="orch-subtask-agent" style="color:${color};">
+            <span class="orch-agent-dot" style="background:${color};"></span>
+            ${escapeHtml(st.agent)}
+          </div>
+        </div>
+      </div>`;
+    })
     .join("");
 
   const rows = plan.subtasks
     .map((st, i) => {
       const skills =
         st.skills.length > 0
-          ? st.skills
+          ? `<div class="orch-route-skills">${st.skills
               .map((sk) => `<span class="skill-tag">${escapeHtml(sk)}</span>`)
-              .join(" ")
-          : '<span style="color:var(--fg-muted);">—</span>';
+              .join("")}</div>`
+          : '<span class="orch-route-empty">—</span>';
       const model = [
         st.cli_engine || "—",
         st.model || "",
@@ -234,76 +260,95 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
       ]
         .filter(Boolean)
         .join(" ");
-      return `<tr style="border-bottom:1px solid var(--border-color);">
-        <td style="padding:6px;">Task #${i + 1} ${escapeHtml(st.title)}</td>
-        <td style="padding:6px; font-weight:600; color:${agentColor(st.agent)}; font-family:var(--font-mono);">${escapeHtml(st.agent)}</td>
-        <td style="padding:6px;">${skills}</td>
-        <td style="padding:6px; font-family:var(--font-mono); color:#7c3aed;">${escapeHtml(model)}</td>
+      const color = agentColor(st.agent);
+      return `<tr>
+        <td class="orch-route-task"><span class="orch-route-task-idx">#${i + 1}</span>${escapeHtml(st.title)}</td>
+        <td class="orch-route-agent" style="color:${color};">${escapeHtml(st.agent)}</td>
+        <td>${skills}</td>
+        <td class="orch-route-model">${escapeHtml(model)}</td>
       </tr>`;
     })
     .join("");
 
   const warnBlock =
     warnings.length > 0
-      ? `<div style="font-size:11px; color:#b45309; margin-bottom:10px;">Warnings: ${warnings.map(escapeHtml).join("; ")}</div>`
+      ? `<div class="orch-warn-banner" role="status">
+          <span aria-hidden="true">⚠</span>
+          <span><strong>Warnings</strong> · ${warnings.map(escapeHtml).join(" · ")}</span>
+        </div>`
       : "";
 
+  const suggested = planSuggestedConcurrency(plan);
+  const concControl = concurrencyControlHtml(suggested, CONC_SELECT_ID);
+
   const actionBtn = needsClarify
-    ? `<button class="btn btn-primary btn-sm" id="confirm-answers-btn" style="background:var(--accent-emerald);">提交并执行</button>`
-    : `<div style="display:flex; gap:6px;">
+    ? `<div class="orch-action-row">${concControl}<button class="btn btn-primary btn-sm btn-dispatch" id="confirm-answers-btn">提交并执行</button></div>`
+    : `<div class="orch-action-row">
+        ${concControl}
         <button class="btn btn-secondary btn-sm" id="save-plan-template-btn">保存为模版</button>
-        <button class="btn btn-primary btn-sm" id="dispatch-plan-btn" style="background:var(--accent-emerald);">确认并分发任务 (Dispatch)</button>
+        <button class="btn btn-primary btn-sm btn-dispatch" id="dispatch-plan-btn">确认并分发任务</button>
       </div>`;
 
   const clarifyBlock = needsClarify ? renderClarifyPanel(questions) : "";
   const stepOffset = needsClarify ? 1 : 0;
+  const metaLine = needsClarify
+    ? `${plan.subtasks.length} 个子任务 · 需回答 ${questions.length} 个澄清问题`
+    : `${plan.subtasks.length} 个子任务 · 路由矩阵已就绪`;
 
   root.innerHTML = `
-    <div class="panel-title-bar">
-      <div class="panel-title">智能调度拆解与路由方案</div>
+    <div class="orch-results-header">
+      <div>
+        <div class="orch-results-kicker">Plan Ready</div>
+        <div class="orch-results-title">智能调度拆解与路由方案</div>
+        <div class="orch-results-meta">${escapeHtml(metaLine)}</div>
+      </div>
       ${actionBtn}
     </div>
     ${warnBlock}
-    ${clarifyBlock}
-    <div class="orch-step-card">
-      <div class="step-number">${1 + stepOffset}</div>
-      <div class="step-content">
-        <div class="step-header">
-          <div class="step-title">意图分析 (Intent Analysis)</div>
-          ${tags}
-        </div>
-        <p style="font-size:12px; color:var(--fg-secondary);">${escapeHtml(plan.intent.summary)}</p>
-      </div>
-    </div>
-    <div class="orch-step-card">
-      <div class="step-number">${2 + stepOffset}</div>
-      <div class="step-content">
-        <div class="step-header">
-          <div class="step-title">任务子目标拆解 (Task Decomposition)</div>
-          <span style="font-size:11px; color:var(--fg-muted);">${plan.subtasks.length} 个关联子任务</span>
-        </div>
-        <div style="font-size:12px; line-height:1.6; color:var(--fg-secondary); font-family:var(--font-mono);">
-          ${subtaskLines}
+    <div class="orch-timeline">
+      ${clarifyBlock}
+      <div class="orch-step-card">
+        <div class="step-number">${1 + stepOffset}</div>
+        <div class="step-content">
+          <div class="step-header">
+            <div class="step-title">意图分析</div>
+            ${tags}
+          </div>
+          <p class="step-body-text">${escapeHtml(plan.intent.summary)}</p>
         </div>
       </div>
-    </div>
-    <div class="orch-step-card">
-      <div class="step-number">${3 + stepOffset}</div>
-      <div class="step-content">
-        <div class="step-header">
-          <div class="step-title">Agent & Skill & Model 路由矩阵</div>
+      <div class="orch-step-card">
+        <div class="step-number">${2 + stepOffset}</div>
+        <div class="step-content">
+          <div class="step-header">
+            <div class="step-title">任务子目标拆解</div>
+            <span class="step-header-meta">${plan.subtasks.length} 个关联子任务</span>
+          </div>
+          <div class="orch-subtask-list">
+            ${subtaskLines || '<div class="step-muted">暂无子任务</div>'}
+          </div>
         </div>
-        <table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:6px;">
-          <thead>
-            <tr style="text-align:left; color:var(--fg-muted); border-bottom:1px solid var(--border-color); font-size:11px; text-transform:uppercase;">
-              <th style="padding:6px;">子任务</th>
-              <th style="padding:6px;">分配 Agent</th>
-              <th style="padding:6px;">调用的 Skill</th>
-              <th style="padding:6px;">Model & Reasoning</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+      </div>
+      <div class="orch-step-card">
+        <div class="step-number">${3 + stepOffset}</div>
+        <div class="step-content">
+          <div class="step-header">
+            <div class="step-title">Agent · Skill · Model 路由矩阵</div>
+          </div>
+          <div class="orch-route-table-wrap">
+            <table class="orch-route-table">
+              <thead>
+                <tr>
+                  <th>子任务</th>
+                  <th>分配 Agent</th>
+                  <th>调用 Skill</th>
+                  <th>Model &amp; Reasoning</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -357,20 +402,26 @@ export function renderOrchestrateError(error: string, raw: string | null): void 
   if (!root) return;
   const actionable = formatActionableError(error);
   const rawBlock = raw
-    ? `<pre style="margin-top:10px; max-height:220px; overflow:auto; font-size:11px; background:#0f172a; color:#e2e8f0; padding:10px; border-radius:6px; white-space:pre-wrap;">${escapeHtml(raw)}</pre>`
+    ? `<pre class="orch-error-raw">${escapeHtml(raw)}</pre>`
     : "";
   root.innerHTML = `
-    <div class="panel-title-bar">
-      <div class="panel-title">调度拆解失败</div>
+    <div class="orch-results-header is-error">
+      <div>
+        <div class="orch-results-kicker">Orchestrate Failed</div>
+        <div class="orch-results-title">调度拆解失败</div>
+        <div class="orch-results-meta">未能生成可分发的 Plan</div>
+      </div>
       <button class="btn btn-secondary btn-sm" id="dispatch-plan-btn" disabled title="没有可分发的有效 Plan">Dispatch 不可用</button>
     </div>
-    <div class="orch-step-card">
-      <div class="step-number">!</div>
-      <div class="step-content">
-        <div class="step-title" style="color:#dc2626;">无法生成可分发的 Plan</div>
-        <p style="font-size:12px; color:var(--fg-secondary); margin-top:6px;">${escapeHtml(actionable)}</p>
-        <p style="font-size:11px; color:var(--fg-muted); margin-top:8px;">可尝试：安装/刷新 CLI · 修正 JSON 夹具 · 确认已注册 Agent 名称匹配。</p>
-        ${rawBlock}
+    <div class="orch-timeline">
+      <div class="orch-step-card orch-error-card">
+        <div class="step-number is-error">!</div>
+        <div class="step-content">
+          <div class="step-title" style="color:#e11d48;">无法生成可分发的 Plan</div>
+          <p class="step-body-text" style="margin-top:6px;">${escapeHtml(actionable)}</p>
+          <p class="step-muted">可尝试：安装 / 刷新 CLI · 修正 JSON 夹具 · 确认已注册 Agent 名称匹配。</p>
+          ${rawBlock}
+        </div>
       </div>
     </div>
   `;
@@ -392,7 +443,7 @@ async function runOrchestrate(): Promise<void> {
   if (btn) {
     btn.classList.add("is-busy");
     btn.innerHTML =
-      '<span class="btn-spinner" aria-hidden="true"></span>正在分析意图与建图…';
+      '<span class="btn-spinner" aria-hidden="true"></span><span>正在分析意图与建图…</span>';
     (btn as HTMLElement).style.opacity = "0.85";
     (btn as HTMLButtonElement).disabled = true;
   }
@@ -433,7 +484,7 @@ async function runOrchestrate(): Promise<void> {
   } finally {
     if (btn) {
       btn.classList.remove("is-busy");
-      btn.innerHTML = "启动智能调度拆解 (Orchestrate)";
+      btn.innerHTML = ORCH_RUN_BTN_HTML;
       (btn as HTMLElement).style.opacity = "1";
       (btn as HTMLButtonElement).disabled = false;
     }

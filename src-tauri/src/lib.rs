@@ -12,7 +12,7 @@ use commands::agents::{
 use commands::cli::{list_cli_engine_status, list_engine_models, probe_cli_engines};
 use commands::db::db_health;
 use commands::orchestrate::{confirm_plan_answers, orchestrate, orchestrate_from_json};
-use commands::overview::{get_overview_stats, get_overview_topology, list_running_queue};
+use commands::overview::{get_overview_stats, list_recent_agents, list_running_queue};
 use commands::sandbox::{sandbox_cancel, sandbox_run};
 use commands::schedules::{
     create_schedule_cmd, delete_schedule_cmd, get_schedule_cmd, list_schedules,
@@ -23,7 +23,7 @@ use commands::system::{app_info, ping, reveal_in_finder};
 use commands::tasks::{
     append_task_log, cancel_run, clear_task_runs, create_goal, create_task_run, delete_task_run,
     dispatch_plan, get_task_run, insert_task_nodes, list_task_logs, list_task_runs,
-    read_workspace_file, reveal_workspace_artifact, retry_node, save_plan, skip_node, start_run,
+    read_workspace_file, reveal_workspace_artifact, retry_node, retry_run, save_plan, skip_node, start_run,
     update_node_status, update_run_progress,
 };
 use commands::templates::{
@@ -31,6 +31,7 @@ use commands::templates::{
     instantiate_template, list_templates, polish_template, update_template_cmd,
 };
 use db::open_db;
+use services::notify::request_notification_permission;
 use services::recovery::interrupt_orphaned_runs;
 use services::scheduler::start_scheduler;
 use state::{DbState, RunState, SandboxState};
@@ -38,14 +39,14 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let conn = open_db().expect("failed to open AgentMind database");
+    let conn = open_db().expect("failed to open AgentFlow database");
     match interrupt_orphaned_runs(&conn) {
         Ok(n) if n > 0 => {
-            eprintln!("[AgentMind] interrupted {n} orphaned task run(s) left from previous session");
+            eprintln!("[AgentFlow] interrupted {n} orphaned task run(s) left from previous session");
         }
         Ok(_) => {}
         Err(e) => {
-            eprintln!("[AgentMind] failed to interrupt orphaned runs: {e}");
+            eprintln!("[AgentFlow] failed to interrupt orphaned runs: {e}");
         }
     }
 
@@ -54,6 +55,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(SandboxState::new())
         .manage(db_state)
         .manage(run_state)
@@ -62,6 +64,7 @@ pub fn run() {
             let db = app.state::<DbState>().conn_arc();
             let cancels = app.state::<RunState>().cancels_arc();
             start_scheduler(handle, db, cancels);
+            request_notification_permission(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -91,7 +94,7 @@ pub fn run() {
             orchestrate_from_json,
             confirm_plan_answers,
             get_overview_stats,
-            get_overview_topology,
+            list_recent_agents,
             list_running_queue,
             create_goal,
             save_plan,
@@ -109,6 +112,7 @@ pub fn run() {
             start_run,
             cancel_run,
             retry_node,
+            retry_run,
             skip_node,
             read_workspace_file,
             reveal_workspace_artifact,

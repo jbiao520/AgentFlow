@@ -1,4 +1,4 @@
-# AgentMind Planning Index
+# AgentFlow Planning Index
 
 All executable plans for v1.0. Each `*-PLAN.md` is a prompt for Claude to execute; `*-SUMMARY.md` marks completion.
 

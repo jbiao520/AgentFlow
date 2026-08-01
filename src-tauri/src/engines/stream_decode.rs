@@ -1,6 +1,6 @@
 //! Decode CLI JSONL streams into human-readable terminal lines.
 use crate::db::now_iso8601;
-use crate::engines::adapter::LogEvent;
+use crate::engines::adapter::{LogEvent, TokenUsage};
 use serde_json::Value;
 
 /// Stateful decoder: collapses tiny token deltas into readable chunks.
@@ -8,6 +8,7 @@ pub struct StreamDecoder {
     engine: String,
     mode: Option<&'static str>,
     buf: String,
+    usage: TokenUsage,
 }
 
 impl StreamDecoder {
@@ -16,7 +17,13 @@ impl StreamDecoder {
             engine: engine.to_string(),
             mode: None,
             buf: String::new(),
+            usage: TokenUsage::default(),
         }
+    }
+
+    /// Accumulated token usage parsed from usage-bearing events.
+    pub fn usage(&self) -> TokenUsage {
+        self.usage.clone()
     }
 
     pub fn push(&mut self, ev: LogEvent) -> Vec<LogEvent> {
@@ -191,6 +198,9 @@ impl StreamDecoder {
             "turn.completed" => {
                 let mut out = self.flush();
                 out.push(log_ev("status", "turn completed"));
+                if let Some(usage) = parse_codex_usage(v) {
+                    self.usage.merge(&usage);
+                }
                 out
             }
             "item.completed" | "item.updated" => {
@@ -272,6 +282,9 @@ impl StreamDecoder {
             "step_finish" => {
                 let mut out = self.flush();
                 out.push(log_ev("status", "step finished"));
+                if let Some(usage) = parse_opencode_usage(v) {
+                    self.usage.merge(&usage);
+                }
                 out
             }
             "text" => {
@@ -333,6 +346,68 @@ impl StreamDecoder {
             }
         }
     }
+}
+
+/// Parse codex `turn.completed` usage:
+/// `{"type":"turn.completed","usage":{"input_tokens":..,"cached_input_tokens":..,
+///   "cache_write_input_tokens":..,"output_tokens":..,"reasoning_output_tokens":..}}`
+fn parse_codex_usage(v: &Value) -> Option<TokenUsage> {
+    let u = v.get("usage")?;
+    let input = u.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+    if input == 0 && u.get("output_tokens").and_then(|x| x.as_u64()).unwrap_or(0) == 0 {
+        return None;
+    }
+    Some(TokenUsage {
+        input_tokens: input,
+        cached_input_tokens: u
+            .get("cached_input_tokens")
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0),
+        cache_write_input_tokens: u
+            .get("cache_write_input_tokens")
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0),
+        output_tokens: u.get("output_tokens").and_then(|x| x.as_u64()).unwrap_or(0),
+        reasoning_tokens: u
+            .get("reasoning_output_tokens")
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0),
+        cost: None,
+    })
+}
+
+/// Parse opencode `step_finish` tokens + cost:
+/// `{"type":"step_finish","part":{...,"tokens":{"total":..,"input":..,"output":..,
+///   "reasoning":..,"cache":{"write":..,"read":..}},"cost":..}}`
+fn parse_opencode_usage(v: &Value) -> Option<TokenUsage> {
+    let tokens = v.get("tokens").or_else(|| v.pointer("/part/tokens"))?;
+    let input = tokens.get("input").and_then(|x| x.as_u64()).unwrap_or(0);
+    let output = tokens.get("output").and_then(|x| x.as_u64()).unwrap_or(0);
+    if input == 0 && output == 0 && tokens.get("total").and_then(|x| x.as_u64()).unwrap_or(0) == 0
+    {
+        return None;
+    }
+    let cache = tokens.get("cache").and_then(|x| x.as_object());
+    Some(TokenUsage {
+        input_tokens: input,
+        cached_input_tokens: cache
+            .and_then(|c| c.get("read"))
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0),
+        cache_write_input_tokens: cache
+            .and_then(|c| c.get("write"))
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0),
+        output_tokens: output,
+        reasoning_tokens: tokens
+            .get("reasoning")
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0),
+        cost: v
+            .get("cost")
+            .or_else(|| v.pointer("/part/cost"))
+            .and_then(|x| x.as_f64()),
+    })
 }
 
 fn extract_assistant_text(v: &Value) -> String {
@@ -539,6 +614,65 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].stream, "agent");
         assert_eq!(out[0].line, "OK");
+    }
+
+    #[test]
+    fn codex_turn_completed_captures_usage() {
+        let mut d = StreamDecoder::new("codex");
+        let out = d.push(LogEvent {
+            ts: "t".into(),
+            stream: "stdout".into(),
+            line: r#"{"type":"turn.completed","usage":{"input_tokens":13014,"cached_input_tokens":1920,"cache_write_input_tokens":0,"output_tokens":36,"reasoning_output_tokens":29}}"#.into(),
+        });
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].stream, "status");
+        let u = d.usage();
+        assert_eq!(u.input_tokens, 13014);
+        assert_eq!(u.cached_input_tokens, 1920);
+        assert_eq!(u.output_tokens, 36);
+        assert_eq!(u.reasoning_tokens, 29);
+        assert_eq!(u.cost, None);
+    }
+
+    #[test]
+    fn opencode_step_finish_captures_usage_and_cost() {
+        let mut d = StreamDecoder::new("opencode");
+        let out = d.push(LogEvent {
+            ts: "t".into(),
+            stream: "stdout".into(),
+            line: r#"{"type":"step_finish","timestamp":1,"sessionID":"s","part":{"id":"p","type":"step-finish","tokens":{"total":13233,"input":11301,"output":2,"reasoning":10,"cache":{"write":0,"read":1920}},"cost":0.001590876}}"#.into(),
+        });
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].stream, "status");
+        let u = d.usage();
+        assert_eq!(u.input_tokens, 11301);
+        assert_eq!(u.cached_input_tokens, 1920);
+        assert_eq!(u.output_tokens, 2);
+        assert_eq!(u.reasoning_tokens, 10);
+        assert!(u.cost.is_some());
+        assert!((u.cost.unwrap() - 0.001590876).abs() < 1e-9);
+        assert_eq!(u.total_tokens_for_engine("opencode"), 13233);
+    }
+
+    #[test]
+    fn usage_merges_across_events() {
+        let mut d = StreamDecoder::new("codex");
+        d.push(LogEvent {
+            ts: "t".into(),
+            stream: "stdout".into(),
+            line: r#"{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":10,"cached_input_tokens":0,"cache_write_input_tokens":0,"reasoning_output_tokens":2}}"#.into(),
+        });
+        d.push(LogEvent {
+            ts: "t".into(),
+            stream: "stdout".into(),
+            line: r#"{"type":"turn.completed","usage":{"input_tokens":200,"output_tokens":20,"cached_input_tokens":5,"cache_write_input_tokens":1,"reasoning_output_tokens":4}}"#.into(),
+        });
+        let u = d.usage();
+        assert_eq!(u.input_tokens, 300);
+        assert_eq!(u.cached_input_tokens, 5);
+        assert_eq!(u.cache_write_input_tokens, 1);
+        assert_eq!(u.output_tokens, 30);
+        assert_eq!(u.reasoning_tokens, 6);
     }
 
     #[test]

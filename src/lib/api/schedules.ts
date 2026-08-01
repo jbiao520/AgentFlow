@@ -7,7 +7,8 @@ function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-export type ScheduleMode = "once" | "interval";
+export type ScheduleMode = "once" | "interval" | "cron";
+export type OverlapPolicy = "allow" | "skip" | "queue";
 
 export type Schedule = {
   id: string;
@@ -24,6 +25,13 @@ export type Schedule = {
   run_count: number;
   created_at: string;
   updated_at: string;
+  cron_expr: string | null;
+  window_start: string | null;
+  window_end: string | null;
+  overlap_policy: OverlapPolicy | string;
+  max_retries: number;
+  retry_delay_secs: number;
+  retry_attempt: number;
 };
 
 export async function listSchedules(): Promise<Schedule[]> {
@@ -44,17 +52,31 @@ export async function createSchedule(args: {
   intervalSecs?: number | null;
   nextRunAt: string;
   enabled?: boolean;
+  cronExpr?: string | null;
+  windowStart?: string | null;
+  windowEnd?: string | null;
+  overlapPolicy?: OverlapPolicy;
+  maxRetries?: number;
+  retryDelaySecs?: number;
 }): Promise<Schedule> {
   if (!isTauri()) throw new Error("createSchedule requires Tauri runtime");
+  const mode = args.mode;
   return invoke<Schedule>("create_schedule", {
     args: {
       name: args.name,
       template_id: args.templateId,
       values_json: JSON.stringify(args.values ?? {}),
-      mode: args.mode,
-      interval_secs: args.intervalSecs ?? null,
+      mode,
+      interval_secs: mode === "interval" ? (args.intervalSecs ?? null) : null,
       next_run_at: args.nextRunAt,
       enabled: args.enabled ?? true,
+      cron_expr:
+        mode === "cron" && args.cronExpr ? args.cronExpr : null,
+      window_start: args.windowStart || null,
+      window_end: args.windowEnd || null,
+      overlap_policy: args.overlapPolicy ?? "queue",
+      max_retries: args.maxRetries ?? 0,
+      retry_delay_secs: args.retryDelaySecs ?? 300,
     },
   });
 }
@@ -68,19 +90,45 @@ export async function updateSchedule(args: {
   intervalSecs?: number | null;
   nextRunAt?: string | null;
   enabled?: boolean | null;
+  cronExpr?: string | null;
+  windowStart?: string | null;
+  windowEnd?: string | null;
+  overlapPolicy?: OverlapPolicy | null;
+  maxRetries?: number | null;
+  retryDelaySecs?: number | null;
 }): Promise<Schedule> {
   if (!isTauri()) throw new Error("updateSchedule requires Tauri runtime");
+  const mode = args.mode ?? null;
+  // Drop fields that do not apply to the selected mode so the UI never shows
+  // stale interval/cron data after a mode switch.
+  const clearInterval =
+    mode === "once" || mode === "cron" || args.intervalSecs == null;
+  const clearCron =
+    mode === "once" ||
+    mode === "interval" ||
+    args.cronExpr === "" ||
+    args.cronExpr == null;
+
   return invoke<Schedule>("update_schedule", {
     args: {
       id: args.id,
       name: args.name ?? null,
       template_id: args.templateId ?? null,
       values_json: args.values ? JSON.stringify(args.values) : null,
-      mode: args.mode ?? null,
-      interval_secs: args.intervalSecs ?? null,
-      clear_interval: args.mode === "once",
+      mode,
+      interval_secs: clearInterval ? null : (args.intervalSecs ?? null),
+      clear_interval: clearInterval,
       next_run_at: args.nextRunAt ?? null,
       enabled: args.enabled ?? null,
+      cron_expr: clearCron ? null : (args.cronExpr ?? null),
+      clear_cron_expr: clearCron,
+      window_start: args.windowStart ?? null,
+      clear_window_start: args.windowStart === "",
+      window_end: args.windowEnd ?? null,
+      clear_window_end: args.windowEnd === "",
+      overlap_policy: args.overlapPolicy ?? null,
+      max_retries: args.maxRetries ?? null,
+      retry_delay_secs: args.retryDelaySecs ?? null,
     },
   });
 }
@@ -120,6 +168,27 @@ export function utcIsoToLocalDatetime(iso: string): string {
   if (Number.isNaN(d.getTime())) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Convert a local daily HH:MM value to the UTC value used by the scheduler. */
+export function localTimeToUtc(time: string | null | undefined): string {
+  if (!time) return "";
+  const [hour, minute] = time.split(":").map(Number);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return "";
+  const now = new Date();
+  now.setHours(hour, minute, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`;
+}
+
+/** Convert a scheduler UTC HH:MM value to the user's local daily time. */
+export function utcTimeToLocal(time: string | null | undefined): string {
+  if (!time) return "";
+  const [hour, minute] = time.split(":").map(Number);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return "";
+  const utc = new Date(Date.UTC(2020, 0, 1, hour, minute, 0, 0));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(utc.getHours())}:${pad(utc.getMinutes())}`;
 }
 
 export function parseScheduleValues(raw: string): Record<string, string> {

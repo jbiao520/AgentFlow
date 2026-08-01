@@ -17,11 +17,18 @@ import {
   renderPlanWorkbench,
   setOrchestrateResult,
 } from "../orchestrator/workbench";
+import {
+  concurrencyControlHtml,
+  planSuggestedConcurrency,
+  readConcurrencySelect,
+} from "../concurrency";
 import { showView } from "../router";
 import { formatActionableError, showToast } from "../toast";
 import { updateTemplateNavCount } from "../nav-counts";
 import { renderPlanDag } from "../tasks/dag";
 import { confirmAction } from "../modals";
+
+const TPL_CONC_SELECT_ID = "tpl-concurrency";
 
 type LibState = {
   templates: Template[];
@@ -248,6 +255,7 @@ function renderDetail(): void {
           ${intent ? `<p class="tpl-intent">${escapeHtml(intent)}</p>` : ""}
         </div>
         <div class="tpl-detail-actions">
+          ${concurrencyControlHtml(planSuggestedConcurrency(plan), TPL_CONC_SELECT_ID)}
           <button type="button" class="btn btn-primary btn-sm" id="tpl-run-btn">执行</button>
           <button type="button" class="btn btn-secondary btn-sm" id="tpl-preview-btn">先预览</button>
           <button type="button" class="btn btn-secondary btn-sm" id="tpl-save-edits-btn">保存修改</button>
@@ -404,10 +412,15 @@ async function runSelected(dispatch: boolean): Promise<void> {
   await yieldForPaint();
 
   try {
+    const suggested = planSuggestedConcurrency(
+      state.detail ? parsePlan(state.detail.plan_json) : null,
+    );
+    const concurrency = readConcurrencySelect(TPL_CONC_SELECT_ID, suggested);
     const result = await instantiateTemplate({
       templateId: state.detail.id,
       values,
       dispatch,
+      concurrency: dispatch ? concurrency : null,
     });
     if (!result.orchestrate.ok) {
       showToast(
@@ -423,7 +436,7 @@ async function runSelected(dispatch: boolean): Promise<void> {
       showView("tasks");
       if (runId) {
         window.dispatchEvent(
-          new CustomEvent("agentmind:run-started", { detail: { runId } }),
+          new CustomEvent("agentflow:run-started", { detail: { runId } }),
         );
       }
       // Navigated away — leave overlay; next selectTemplate will rebuild detail.

@@ -2,6 +2,11 @@
 
 export type ToastKind = "info" | "error" | "success";
 
+export type ToastAction = {
+  label: string;
+  onClick: () => void | Promise<void>;
+};
+
 export function showToast(
   message: string,
   opts?: { kind?: ToastKind; durationMs?: number },
@@ -36,6 +41,43 @@ export function showToast(
     toast.style.transition = "opacity 0.2s ease";
     window.setTimeout(() => toast.remove(), 200);
   }, duration);
+}
+
+/** Show a persistent in-app notification with direct next actions. */
+export function showActionToast(
+  message: string,
+  actions: ToastAction[],
+  opts?: { kind?: ToastKind; durationMs?: number },
+): void {
+  const container = document.getElementById("toast-container");
+  if (!container) return;
+  const kind = opts?.kind ?? "error";
+  const toast = document.createElement("div");
+  toast.className = "toast-msg toast-action-msg";
+  if (kind === "error") toast.style.borderColor = "rgba(220,38,38,0.35)";
+
+  const dot = document.createElement("span");
+  dot.className = "status-dot";
+  dot.style.background = kind === "success" ? "var(--accent-emerald)" : "#dc2626";
+  const body = document.createElement("span");
+  body.textContent = message;
+  const actionBox = document.createElement("span");
+  actionBox.className = "toast-actions";
+  toast.append(dot, body, actionBox);
+  const dismiss = (): void => toast.remove();
+  for (const action of actions) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "toast-action-btn";
+    button.textContent = action.label;
+    button.addEventListener("click", () => {
+      dismiss();
+      void action.onClick();
+    });
+    actionBox.appendChild(button);
+  }
+  container.appendChild(toast);
+  window.setTimeout(dismiss, opts?.durationMs ?? 12_000);
 }
 
 /** Map common backend errors to actionable copy. */

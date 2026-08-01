@@ -3,7 +3,7 @@
 **Local/git `import_agent` IPC plus live Agent matrix UI rendered from `list_agents`.**
 
 ## Accomplishments
-- Backend `import_agent`: bind absolute local dirs under home, or `git clone` into `~/Library/Application Support/AgentMind/workspaces/{name}`; upsert agent + default profile; reject `..` / relative paths
+- Backend `import_agent`: bind absolute local dirs under home, or `git clone` into `~/Library/Application Support/AgentFlow/workspaces/{name}`; upsert agent + default profile; reject `..` / relative paths
 - Agent matrix clears mock cards and renders from SQLite; client-side search/status/CLI filters preserved
 - Import modal fields wired (`name` / path-or-git / CLI / desc) → `import_agent` → refresh + toast
 

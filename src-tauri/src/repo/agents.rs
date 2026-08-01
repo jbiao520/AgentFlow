@@ -14,6 +14,9 @@ pub struct Agent {
     pub status: String,
     pub created_at: String,
     pub updated_at: String,
+    /// Set (non-NULL) for soft-deleted agents. Kept so historical runs/DAGs
+    /// that reference the id can still resolve the row.
+    pub deleted_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,8 +35,6 @@ pub struct AgentModelProfile {
     pub agent_id: String,
     pub preferred_model: Option<String>,
     pub reasoning_effort: Option<String>,
-    pub temperature: Option<f64>,
-    pub auto_route: bool,
     pub engine_options_json: Option<String>,
 }
 
@@ -48,14 +49,15 @@ fn map_agent(row: &rusqlite::Row<'_>) -> rusqlite::Result<Agent> {
         status: row.get(6)?,
         created_at: row.get(7)?,
         updated_at: row.get(8)?,
+        deleted_at: row.get(9)?,
     })
 }
 
 pub fn list_agents(conn: &Connection) -> Result<Vec<Agent>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, description, workspace_path, git_url, default_cli, status, created_at, updated_at
-             FROM agents ORDER BY name COLLATE NOCASE",
+            "SELECT id, name, description, workspace_path, git_url, default_cli, status, created_at, updated_at, deleted_at
+             FROM agents WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE",
         )
         .map_err(|e| e.to_string())?;
     let mut rows = stmt
@@ -91,7 +93,7 @@ pub fn list_agents(conn: &Connection) -> Result<Vec<Agent>, String> {
 
 pub fn get_agent(conn: &Connection, id: &str) -> Result<Option<Agent>, String> {
     conn.query_row(
-        "SELECT id, name, description, workspace_path, git_url, default_cli, status, created_at, updated_at
+        "SELECT id, name, description, workspace_path, git_url, default_cli, status, created_at, updated_at, deleted_at
          FROM agents WHERE id = ?1",
         [id],
         map_agent,
@@ -134,10 +136,10 @@ pub fn upsert_agent(conn: &Connection, input: AgentUpsert) -> Result<Agent, Stri
         if !exists {
             return Err(format!("agent not found: {existing_id}"));
         }
-        // Unique name check excluding self
+        // Unique name check excluding self (and soft-deleted rows)
         let conflict: Option<String> = conn
             .query_row(
-                "SELECT id FROM agents WHERE name = ?1 AND id != ?2",
+                "SELECT id FROM agents WHERE name = ?1 AND id != ?2 AND deleted_at IS NULL",
                 params![name, existing_id],
                 |row| row.get(0),
             )
@@ -148,7 +150,7 @@ pub fn upsert_agent(conn: &Connection, input: AgentUpsert) -> Result<Agent, Stri
         }
         conn.execute(
             "UPDATE agents SET name=?1, description=?2, workspace_path=?3, git_url=?4,
-             default_cli=?5, status=?6, updated_at=?7 WHERE id=?8",
+             default_cli=?5, status=?6, deleted_at=NULL, updated_at=?7 WHERE id=?8",
             params![
                 name,
                 input.description,
@@ -163,43 +165,71 @@ pub fn upsert_agent(conn: &Connection, input: AgentUpsert) -> Result<Agent, Stri
         .map_err(|e| e.to_string())?;
         existing_id.clone()
     } else {
-        let conflict: Option<String> = conn
+        // If a soft-deleted row owns this name, revive it (same id) so
+        // historical runs/DAGs that reference the id keep resolving.
+        let existing: Option<(String, Option<String>)> = conn
             .query_row(
-                "SELECT id FROM agents WHERE name = ?1",
+                "SELECT id, deleted_at FROM agents WHERE name = ?1",
                 [&name],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
             .map_err(|e| e.to_string())?;
-        if conflict.is_some() {
-            return Err(format!("agent name already exists: {name}"));
-        }
-        let id = Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT INTO agents (id, name, description, workspace_path, git_url, default_cli, status, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![
-                id,
-                name,
-                input.description,
-                workspace_path,
-                input.git_url,
-                default_cli,
-                status,
-                now,
-                now
-            ],
-        )
-        .map_err(|e| e.to_string())?;
+        let id = match existing {
+            Some((existing_id, Some(_))) => {
+                conn.execute(
+                    "UPDATE agents SET name=?1, description=?2, workspace_path=?3, git_url=?4,
+                     default_cli=?5, status=?6, deleted_at=NULL, updated_at=?7 WHERE id=?8",
+                    params![
+                        name,
+                        input.description,
+                        workspace_path,
+                        input.git_url,
+                        default_cli,
+                        status,
+                        now,
+                        existing_id
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+                existing_id
+            }
+            Some(_) => return Err(format!("agent name already exists: {name}")),
+            None => {
+                let id = Uuid::new_v4().to_string();
+                conn.execute(
+                    "INSERT INTO agents (id, name, description, workspace_path, git_url, default_cli, status, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    params![
+                        id,
+                        name,
+                        input.description,
+                        workspace_path,
+                        input.git_url,
+                        default_cli,
+                        status,
+                        now,
+                        now
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+                id
+            }
+        };
         id
     };
 
     get_agent(conn, &id)?.ok_or_else(|| "agent missing after upsert".into())
 }
 
+/// Soft-delete an agent (tombstone). The row is kept so historical
+/// task_nodes / runs that reference the id still resolve for display.
 pub fn delete_agent(conn: &Connection, id: &str) -> Result<(), String> {
     let n = conn
-        .execute("DELETE FROM agents WHERE id = ?1", [id])
+        .execute(
+            "UPDATE agents SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+            params![now_iso8601(), id],
+        )
         .map_err(|e| e.to_string())?;
     if n == 0 {
         return Err(format!("agent not found: {id}"));
@@ -211,8 +241,9 @@ pub fn get_agent_profile(
     conn: &Connection,
     agent_id: &str,
 ) -> Result<Option<AgentModelProfile>, String> {
+    // temperature / auto_route columns remain in SQLite but are unused dead fields.
     conn.query_row(
-        "SELECT agent_id, preferred_model, reasoning_effort, temperature, auto_route, engine_options_json
+        "SELECT agent_id, preferred_model, reasoning_effort, engine_options_json
          FROM agent_model_profiles WHERE agent_id = ?1",
         [agent_id],
         |row| {
@@ -220,9 +251,7 @@ pub fn get_agent_profile(
                 agent_id: row.get(0)?,
                 preferred_model: row.get(1)?,
                 reasoning_effort: row.get(2)?,
-                temperature: row.get(3)?,
-                auto_route: row.get::<_, i64>(4)? != 0,
-                engine_options_json: row.get(5)?,
+                engine_options_json: row.get(3)?,
             })
         },
     )
@@ -246,22 +275,18 @@ pub fn upsert_agent_profile(
     if !exists {
         return Err(format!("agent not found: {}", profile.agent_id));
     }
-    let auto_route = if profile.auto_route { 1 } else { 0 };
+    // Leave temperature/auto_route at schema defaults; do not update them.
     conn.execute(
-        "INSERT INTO agent_model_profiles (agent_id, preferred_model, reasoning_effort, temperature, auto_route, engine_options_json)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "INSERT INTO agent_model_profiles (agent_id, preferred_model, reasoning_effort, engine_options_json)
+         VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT(agent_id) DO UPDATE SET
            preferred_model=excluded.preferred_model,
            reasoning_effort=excluded.reasoning_effort,
-           temperature=excluded.temperature,
-           auto_route=excluded.auto_route,
            engine_options_json=excluded.engine_options_json",
         params![
             profile.agent_id,
             profile.preferred_model,
             profile.reasoning_effort,
-            profile.temperature,
-            auto_route,
             profile.engine_options_json
         ],
     )
@@ -327,14 +352,12 @@ mod tests {
                 agent_id: agent.id.clone(),
                 preferred_model: Some("sol".into()),
                 reasoning_effort: Some("high".into()),
-                temperature: Some(0.2),
-                auto_route: true,
                 engine_options_json: Some("{}".into()),
             },
         )
         .unwrap();
         assert_eq!(profile.preferred_model.as_deref(), Some("sol"));
-        assert!(profile.auto_route);
+        assert_eq!(profile.reasoning_effort.as_deref(), Some("high"));
 
         let err = upsert_agent(
             &conn,
@@ -353,13 +376,13 @@ mod tests {
     }
 
     #[test]
-    fn delete_cascades_profile() {
+    fn delete_is_soft_and_revives_on_reimport() {
         let (_dir, conn) = test_conn();
         let agent = upsert_agent(
             &conn,
             AgentUpsert {
                 id: None,
-                name: "gone".into(),
+                name: "soft".into(),
                 description: None,
                 workspace_path: "/ws".into(),
                 git_url: None,
@@ -374,13 +397,76 @@ mod tests {
                 agent_id: agent.id.clone(),
                 preferred_model: Some("m".into()),
                 reasoning_effort: None,
-                temperature: None,
-                auto_route: false,
                 engine_options_json: None,
             },
         )
         .unwrap();
+
         delete_agent(&conn, &agent.id).unwrap();
-        assert!(get_agent_profile(&conn, &agent.id).unwrap().is_none());
+        // Hidden from the live list, but the row + profile stay resolvable
+        // so historical runs/DAGs still render.
+        assert!(list_agents(&conn).unwrap().is_empty());
+        assert!(get_agent(&conn, &agent.id).unwrap().is_some());
+        assert!(get_agent_profile(&conn, &agent.id).unwrap().is_some());
+
+        // Re-importing the same name revives the SAME id → history keeps resolving.
+        let revived = upsert_agent(
+            &conn,
+            AgentUpsert {
+                id: None,
+                name: "soft".into(),
+                description: None,
+                workspace_path: "/ws2".into(),
+                git_url: None,
+                default_cli: "opencode".into(),
+                status: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(revived.id, agent.id);
+        assert_eq!(list_agents(&conn).unwrap().len(), 1);
+        assert!(get_agent(&conn, &agent.id).unwrap().is_some());
+
+        // Deleting a missing id errors.
+        assert!(delete_agent(&conn, "no-such-id").unwrap_err().contains("not found"));
+        // Re-deleting the revived agent works again.
+        delete_agent(&conn, &agent.id).unwrap();
+        assert!(list_agents(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_does_not_touch_other_agents() {
+        let (_dir, conn) = test_conn();
+        let a = upsert_agent(
+            &conn,
+            AgentUpsert {
+                id: None,
+                name: "keep".into(),
+                description: None,
+                workspace_path: "/ws".into(),
+                git_url: None,
+                default_cli: "codex".into(),
+                status: None,
+            },
+        )
+        .unwrap();
+        let b = upsert_agent(
+            &conn,
+            AgentUpsert {
+                id: None,
+                name: "drop".into(),
+                description: None,
+                workspace_path: "/ws".into(),
+                git_url: None,
+                default_cli: "codex".into(),
+                status: None,
+            },
+        )
+        .unwrap();
+        delete_agent(&conn, &b.id).unwrap();
+        let list = list_agents(&conn).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, a.id);
+        assert!(list[0].deleted_at.is_none());
     }
 }

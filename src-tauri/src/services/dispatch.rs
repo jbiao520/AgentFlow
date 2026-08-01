@@ -1,6 +1,7 @@
 //! Dispatch: create TaskRun + DAG nodes from a validated Plan.
 use crate::repo::{
-    create_task_run, get_plan, insert_task_nodes, list_agents, TaskNode, TaskNodeInsert, TaskRun,
+    create_task_run_for_schedule, get_plan, insert_task_nodes, list_agents,
+    TaskNode, TaskNodeInsert, TaskRun,
 };
 use crate::services::orchestrate::{
     parse_plan_json, preflight_for_dispatch, validate_plan, PlanAnalysis,
@@ -26,6 +27,15 @@ pub fn load_plan_analysis(
 
 /// Create a new run + pending nodes from plan. Prefer new run each dispatch (idempotent re-dispatch).
 pub fn dispatch_plan(conn: &Connection, plan_id: &str) -> Result<DispatchResult, String> {
+    dispatch_plan_for_schedule(conn, plan_id, None, false)
+}
+
+pub fn dispatch_plan_for_schedule(
+    conn: &Connection,
+    plan_id: &str,
+    schedule_id: Option<&str>,
+    is_manual: bool,
+) -> Result<DispatchResult, String> {
     let (_plan_id, goal_id, analysis) = load_plan_analysis(conn, plan_id)?;
 
     // Re-validate structural constraints + hard runtime preflight before any writes.
@@ -39,7 +49,13 @@ pub fn dispatch_plan(conn: &Connection, plan_id: &str) -> Result<DispatchResult,
         .map_err(|e| format!("begin dispatch transaction: {e}"))?;
 
     let built = (|| -> Result<DispatchResult, String> {
-        let run = create_task_run(&tx, &goal_id, plan_id)?;
+        let run = create_task_run_for_schedule(
+            &tx,
+            &goal_id,
+            plan_id,
+            schedule_id,
+            is_manual,
+        )?;
 
         let mut inserts = Vec::with_capacity(analysis.subtasks.len());
         for (seq, st) in analysis.subtasks.iter().enumerate() {

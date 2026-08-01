@@ -27,12 +27,12 @@ pub struct ImportAgentResult {
     pub skills_sync_error: Option<String>,
 }
 
-/// Application Support workspaces root: `…/AgentMind/workspaces`
+/// Application Support workspaces root: `…/AgentFlow/workspaces`
 pub fn workspaces_root() -> Result<PathBuf, String> {
     let db = db_path();
     let parent = db
         .parent()
-        .ok_or_else(|| "cannot resolve AgentMind data dir".to_string())?;
+        .ok_or_else(|| "cannot resolve AgentFlow data dir".to_string())?;
     let root = parent.join("workspaces");
     fs::create_dir_all(&root).map_err(|e| format!("create workspaces dir: {e}"))?;
     Ok(root)
@@ -77,7 +77,7 @@ fn sanitize_agent_dir_name(name: &str) -> Result<String, String> {
 }
 
 /// Reject `..` components and require a canonical absolute path under home
-/// (or under AgentMind workspaces), unless the path already exists as a dir
+/// (or under AgentFlow workspaces), unless the path already exists as a dir
 /// that the user explicitly selected (still must be absolute + no `..`).
 pub fn validate_local_workspace_path(raw: &str) -> Result<PathBuf, String> {
     let trimmed = raw.trim();
@@ -114,7 +114,7 @@ pub fn validate_local_workspace_path(raw: &str) -> Result<PathBuf, String> {
 
     if !under_home && !under_workspaces {
         return Err(
-            "workspace path must be under your home directory (or AgentMind workspaces)".into(),
+            "workspace path must be under your home directory (or AgentFlow workspaces)".into(),
         );
     }
 
@@ -240,8 +240,6 @@ pub fn import_agent(conn: &Connection, req: ImportAgentRequest) -> Result<Import
                 agent_id: agent.id.clone(),
                 preferred_model: None,
                 reasoning_effort: Some("medium".into()),
-                temperature: Some(0.2),
-                auto_route: true,
                 engine_options_json: Some("{}".into()),
             },
         )?;
@@ -274,7 +272,7 @@ mod tests {
         // Place workspace under a fake home by using the temp dir itself as path —
         // validate_local_workspace_path requires under $HOME. Skip if temp is not under home.
         let home = dirs_home().expect("home");
-        let ws = home.join(".agentmind-test-import-ws");
+        let ws = home.join(".agentflow-test-import-ws");
         let _ = fs::remove_dir_all(&ws);
         fs::create_dir_all(&ws).unwrap();
 

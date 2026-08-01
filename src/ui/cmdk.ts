@@ -2,8 +2,8 @@
  * Cmd+K palette: navigation, actions, and agent jump.
  */
 import { listAgents, type Agent } from "../lib/api/agents";
-import { refreshCliWidget } from "./cli-widget";
 import { selectAgentById, showView, type ViewId } from "./router";
+import { refreshCliWidget } from "./settings/cli";
 import { showToast } from "./toast";
 
 export type CmdKAction = {
@@ -38,19 +38,24 @@ function navAction(view: ViewId, label: string): CmdKAction {
 
 async function buildActions(): Promise<CmdKAction[]> {
   const actions: CmdKAction[] = [
-    navAction("overview", "跳转至 Dashboard"),
-    navAction("agents", "跳转至 Agents"),
+    navAction("overview", "跳转至 全局总览"),
+    navAction("agents", "跳转至 Agent 矩阵"),
     navAction("commander", "打开 调度中枢"),
     navAction("tasks", "查看 任务中心"),
     navAction("templates", "打开 模版库"),
-    navAction("schedules", "打开 Schedules 定时任务"),
+    navAction("schedules", "打开 定时调度"),
+    navAction("settings", "打开 设置"),
     {
       id: "action-probe-cli",
       label: "Probe CLIs — 探测本机 CLI 引擎",
-      keywords: "probe cli engines 探测",
+      keywords: "probe cli engines 探测 设置",
       group: "action",
       run: async () => {
         closePalette();
+        showView("settings");
+        void import("./settings/page").then((m) =>
+          m.showSettingsSection("cli"),
+        );
         await refreshCliWidget(true);
         showToast("已重新探测 CLI 引擎");
       },
@@ -125,7 +130,7 @@ function renderList(actions: CmdKAction[], query: string): void {
   const groups: Array<{ key: CmdKAction["group"]; title: string }> = [
     { key: "nav", title: "Quick Nav" },
     { key: "action", title: "Actions" },
-    { key: "agent", title: "Agents" },
+    { key: "agent", title: "Agent 矩阵" },
   ];
 
   let html = "";

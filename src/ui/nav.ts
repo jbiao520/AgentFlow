@@ -7,6 +7,7 @@ const NAV_TO_VIEW: Record<string, ViewId> = {
   "nav-tasks": "tasks",
   "nav-templates": "templates",
   "nav-schedules": "schedules",
+  "nav-settings": "settings",
 };
 
 /** Bind sidebar nav items (data-view preferred, data-od-id fallback). */

@@ -112,7 +112,8 @@ export function renderDag(
       const stroke = statusStroke(
         sorted[fi]?.status === "success" ? "success" : "pending",
       );
-      edges += `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${stroke}" stroke-width="1.5"/>`;
+      const mx = (x1 + x2) / 2;
+      edges += `<path d="M ${x1} ${y} C ${mx} ${y}, ${mx} ${y}, ${x2} ${y}" fill="none" stroke="${stroke}" stroke-width="2" marker-end="url(#dag-arrow)" opacity="0.85"/>`;
     }
   }
 
@@ -120,19 +121,28 @@ export function renderDag(
   sorted.forEach((n, i) => {
     const x = pad + i * (w + gap);
     const stroke = statusStroke(n.status);
-    const sw = selectedId === n.id ? 2.2 : 1.2;
+    const isSel = selectedId === n.id;
+    const sw = isSel ? 2.5 : 1.2;
+    const fill = isSel ? "rgba(22, 78, 43, 0.06)" : "#ffffff";
     const title =
-      n.title.length > 22 ? `${n.title.slice(0, 20)}…` : n.title;
+      n.title.length > 20 ? `${n.title.slice(0, 18)}…` : n.title;
     const engine = n.cli_engine || "—";
     bodies += `<g transform="translate(${x}, 20)" style="cursor:pointer;" data-node-id="${escapeXml(n.id)}">
-      <rect width="${w}" height="${h}" rx="6" fill="#ffffff" stroke="${stroke}" stroke-width="${sw}"/>
-      <text x="10" y="22" fill="#0f172a" font-size="11" font-weight="bold" font-family="var(--font-mono)">${i + 1}. ${escapeXml(title)}</text>
-      <text x="10" y="40" fill="${stroke}" font-size="10" font-weight="600">${escapeXml(statusLabel(n.status))}</text>
-      <text x="10" y="56" fill="#64748b" font-size="9" font-family="var(--font-mono)">${escapeXml(engine)} · r${n.retry_count}</text>
+      <rect width="${w}" height="${h}" rx="9" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+      <text x="12" y="24" fill="var(--fg-primary)" font-size="11.5" font-weight="700" font-family="var(--font-mono)">${i + 1}. ${escapeXml(title)}</text>
+      <text x="12" y="42" fill="${stroke}" font-size="10.5" font-weight="700">${escapeXml(statusLabel(n.status))}</text>
+      <text x="12" y="58" fill="var(--fg-muted)" font-size="9.5" font-family="var(--font-mono)">${escapeXml(engine)} · retry: ${n.retry_count}</text>
     </g>`;
   });
 
-  container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" style="width:100%; height:${height}px; background:#f8fafc; border:1px solid var(--border-color); border-radius:6px;">${edges}${bodies}</svg>`;
+  container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" style="width:100%; height:${height}px; background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm);">
+    <defs>
+      <marker id="dag-arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent-primary)"/>
+      </marker>
+    </defs>
+    ${edges}${bodies}
+  </svg>`;
 
   container.querySelectorAll("[data-node-id]").forEach((g) => {
     g.addEventListener("click", () => {
@@ -232,9 +242,9 @@ export function renderPlanDag(
     const sub = engine ? `${agent} · ${engine}` : agent;
     bodies += `<g transform="translate(${p.x}, ${p.y})" class="tpl-dag-node">
       <rect width="${colW}" height="${rowH}" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
-      <rect width="3" height="${rowH}" rx="1.5" fill="#2563eb"/>
+      <rect width="3" height="${rowH}" rx="1.5" fill="#4f46e5"/>
       <text x="14" y="24" fill="#0f172a" font-size="11" font-weight="700" font-family="var(--font-mono)">${idx + 1}. ${escapeXml(title)}</text>
-      <text x="14" y="42" fill="#2563eb" font-size="10" font-weight="600">${escapeXml(agent)}</text>
+      <text x="14" y="42" fill="#4f46e5" font-size="10" font-weight="600">${escapeXml(agent)}</text>
       <text x="14" y="58" fill="#64748b" font-size="9" font-family="var(--font-mono)">${escapeXml(sub === agent ? `id:${truncate(item.id, 16)}` : engine)}</text>
     </g>`;
   });

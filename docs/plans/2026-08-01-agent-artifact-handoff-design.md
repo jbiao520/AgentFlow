@@ -24,7 +24,7 @@ Scope: DAG 运行时跨节点 / 跨 Agent 产物交接
 A success
   → 读 A.artifact_paths_json
   → 在 A.workspace 校验存在
-  → 拷到 B.workspace/.agentmind/handoff/<run_id>/<pred_local_id>/
+  → 拷到 B.workspace/.agentflow/handoff/<run_id>/<pred_local_id>/
   → 注入 Inputs 区块到 B prompt
   → 启动 B
 ```
@@ -34,7 +34,7 @@ A success
 目标相对路径：
 
 ```
-.agentmind/handoff/<run_id>/<pred_node_local_id>/<original_relative_path>
+.agentflow/handoff/<run_id>/<pred_node_local_id>/<original_relative_path>
 ```
 
 - 同 Agent / 跨 Agent 都走同一布局；源文件不删
@@ -49,19 +49,19 @@ A success
 ## Inputs from previous steps
 These files were copied into your workspace. Read them before proceeding.
 - From "<title>" (<local_id>):
-  - .agentmind/handoff/<run_id>/<local_id>/notes.md
+  - .agentflow/handoff/<run_id>/<local_id>/notes.md
 
 When you create output files, print one line per file:
-AGENTMIND_ARTIFACT:relative/path/from/workspace/root
+AGENTFLOW_ARTIFACT:relative/path/from/workspace/root
 ```
 
-每个节点（无论有无依赖）prompt 末尾都附带 `AGENTMIND_ARTIFACT:` 说明。
+每个节点（无论有无依赖）prompt 末尾都附带 `AGENTFLOW_ARTIFACT:` 说明。
 
 ## Orchestrator rules
 
 在 `build_orchestrate_prompt` 中增加：
 
-- 有 `depends_on` 的子任务不要假设上游 workspace 路径；运行时会拷到 `.agentmind/handoff/...`
+- 有 `depends_on` 的子任务不要假设上游 workspace 路径；运行时会拷到 `.agentflow/handoff/...`
 - 上游 `artifact_paths` 必须是相对路径，且与该子任务实际写出的文件一致
 - 允许跨 Agent 流水线
 

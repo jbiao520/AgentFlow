@@ -1,13 +1,13 @@
 use std::fs;
 use std::path::PathBuf;
 
-/// Resolve DB path: `~/Library/Application Support/AgentMind/agentmind.db`
+/// Resolve DB path: `~/Library/Application Support/AgentFlow/agentflow.db`
 pub fn db_path() -> PathBuf {
-    if let Some(proj) = directories::ProjectDirs::from("", "", "AgentMind") {
-        return proj.data_dir().join("agentmind.db");
+    if let Some(proj) = directories::ProjectDirs::from("", "", "AgentFlow") {
+        return proj.data_dir().join("agentflow.db");
     }
     // Fallback for unusual environments without a home dir resolution
-    PathBuf::from("agentmind.db")
+    PathBuf::from("agentflow.db")
 }
 
 /// Ensure parent directory exists, then return the DB path.

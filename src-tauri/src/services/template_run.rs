@@ -2,7 +2,7 @@
 //! Shared by IPC command and the background schedule ticker.
 use crate::engines::runner::CancelToken;
 use crate::repo::{create_goal, get_template, save_plan};
-use crate::services::dispatch::{dispatch_plan, DispatchResult};
+use crate::services::dispatch::{dispatch_plan_for_schedule, DispatchResult};
 use crate::services::orchestrate::{
     parse_plan_json, plan_to_analysis_json, validate_plan, PlanAnalysis,
 };
@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::AppHandle;
 
-use crate::services::dag_runner::{run_dag_loop, DEFAULT_CONCURRENCY};
+use crate::services::dag_runner::{resolve_concurrency, run_dag_loop};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StartRunResult {
@@ -55,13 +55,16 @@ pub fn spawn_dag_run(
     run_id: String,
     concurrency: Option<usize>,
 ) -> Result<StartRunResult, String> {
-    {
+    let plan_conc = {
         let conn = db
             .lock()
             .map_err(|e| format!("db lock poisoned: {e}"))?;
-        let _ = crate::repo::get_task_run(&conn, &run_id)?
+        let full = crate::repo::get_task_run(&conn, &run_id)?
             .ok_or_else(|| format!("run not found: {run_id}"))?;
-    }
+        let plan = crate::repo::get_plan(&conn, &full.run.plan_id).ok().flatten();
+        plan.and_then(|p| parse_plan_json(&p.analysis_json).ok())
+            .and_then(|a| a.concurrency)
+    };
 
     let cancel = CancelToken::new();
     {
@@ -76,7 +79,7 @@ pub fn spawn_dag_run(
     let db2 = Arc::clone(&db);
     let app2 = app.clone();
     let run_id2 = run_id.clone();
-    let conc = concurrency.unwrap_or(DEFAULT_CONCURRENCY);
+    let conc = resolve_concurrency(concurrency, plan_conc);
     let cancels2 = Arc::clone(&cancels);
 
     thread::spawn(move || {
@@ -100,6 +103,8 @@ pub fn instantiate_template_run(
     template_id: &str,
     values: &HashMap<String, String>,
     dispatch: bool,
+    schedule_id: Option<&str>,
+    is_manual: bool,
 ) -> Result<InstantiateRunResult, String> {
     let (goal_prompt, _plan_json, warnings, plan) = {
         let conn = db
@@ -153,7 +158,12 @@ pub fn instantiate_template_run(
         let conn = db
             .lock()
             .map_err(|e| format!("db lock poisoned: {e}"))?;
-        dispatch_plan(&conn, &plan_id)?
+        dispatch_plan_for_schedule(
+            &conn,
+            &plan_id,
+            schedule_id,
+            schedule_id.is_some() && is_manual,
+        )?
     };
 
     let started = spawn_dag_run(

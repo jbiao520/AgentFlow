@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 
 const SCHEMA_SQL: &str = include_str!("schema.sql");
-const SCHEMA_VERSION: i32 = 3;
+const SCHEMA_VERSION: i32 = 7;
 
 /// Idempotent schema migration to current version. Seeds orchestrator_settings id=1 if missing.
 pub fn migrate(conn: &Connection) -> Result<(), String> {
@@ -16,10 +16,18 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
         )
         .unwrap_or(0);
 
-    // schema_migrations may not exist yet — create via full schema
+    // schema_migrations may not exist yet — create via full schema.
+    // Note: CREATE TABLE IF NOT EXISTS does not add new columns to existing
+    // tables; column/index upgrades for older DBs live in migrate_vN helpers
+    // and must run after the batch (indexes that need those columns must not
+    // be in SCHEMA_SQL alone — see migrate_v6_schedules).
     if current < SCHEMA_VERSION {
         conn.execute_batch(SCHEMA_SQL)
             .map_err(|e| format!("apply schema: {e}"))?;
+        migrate_v4_agents_deleted_at(conn, current)?;
+        migrate_v5_task_run_delivery_report(conn, current)?;
+        migrate_v6_schedules(conn, current)?;
+        migrate_v7_task_run_manual(conn, current)?;
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations(version) VALUES (?1)",
             [SCHEMA_VERSION],
@@ -29,6 +37,96 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
 
     seed_orchestrator_settings(conn)?;
     Ok(())
+}
+
+/// v7: mark task runs that were triggered manually so terminal results do not
+/// re-enable or reschedule their owning schedule.
+fn migrate_v7_task_run_manual(conn: &Connection, from_version: i32) -> Result<(), String> {
+    if from_version >= 7 {
+        return Ok(());
+    }
+    if !table_has_column(conn, "task_runs", "is_manual")? {
+        conn.execute(
+            "ALTER TABLE task_runs ADD COLUMN is_manual INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| format!("migrate v7 task_runs.is_manual: {e}"))?;
+    }
+    Ok(())
+}
+
+/// v6: persist schedule execution policy and associate runs with schedules.
+fn migrate_v6_schedules(conn: &Connection, from_version: i32) -> Result<(), String> {
+    if from_version >= 6 {
+        return Ok(());
+    }
+    for (table, column, definition) in [
+        ("task_runs", "schedule_id", "TEXT REFERENCES schedules(id) ON DELETE SET NULL"),
+        ("schedules", "cron_expr", "TEXT"),
+        ("schedules", "window_start", "TEXT"),
+        ("schedules", "window_end", "TEXT"),
+        ("schedules", "overlap_policy", "TEXT NOT NULL DEFAULT 'queue'"),
+        ("schedules", "max_retries", "INTEGER NOT NULL DEFAULT 0"),
+        ("schedules", "retry_delay_secs", "INTEGER NOT NULL DEFAULT 300"),
+        ("schedules", "retry_attempt", "INTEGER NOT NULL DEFAULT 0"),
+    ] {
+        if !table_has_column(conn, table, column)? {
+            conn.execute(
+                &format!("ALTER TABLE {table} ADD COLUMN {column} {definition}"),
+                [],
+            )
+            .map_err(|e| format!("migrate v6 {table}.{column}: {e}"))?;
+        }
+    }
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_runs_schedule_active
+         ON task_runs(schedule_id, status)",
+        [],
+    )
+    .map_err(|e| format!("migrate v6 schedule index: {e}"))?;
+    Ok(())
+}
+
+/// v5: persist the generated acceptance/delivery report with each run.
+fn migrate_v5_task_run_delivery_report(
+    conn: &Connection,
+    from_version: i32,
+) -> Result<(), String> {
+    if from_version >= 5 {
+        return Ok(());
+    }
+    if !table_has_column(conn, "task_runs", "delivery_report_json")? {
+        conn.execute(
+            "ALTER TABLE task_runs ADD COLUMN delivery_report_json TEXT",
+            [],
+        )
+        .map_err(|e| format!("migrate v5 task_runs.delivery_report_json: {e}"))?;
+    }
+    Ok(())
+}
+
+/// v4: agents.deleted_at (soft delete so historical runs/DAGs keep resolving).
+fn migrate_v4_agents_deleted_at(conn: &Connection, from_version: i32) -> Result<(), String> {
+    if from_version >= 4 {
+        return Ok(());
+    }
+    if !table_has_column(conn, "agents", "deleted_at")? {
+        conn.execute("ALTER TABLE agents ADD COLUMN deleted_at TEXT", [])
+            .map_err(|e| format!("migrate v4 agents.deleted_at: {e}"))?;
+    }
+    Ok(())
+}
+
+fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|e| e.to_string())?;
+    let cols = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(cols.iter().any(|c| c == column))
 }
 
 fn seed_orchestrator_settings(conn: &Connection) -> Result<(), String> {
@@ -160,6 +258,7 @@ mod tests {
             "cli_engine_status",
             "templates",
             "schedules",
+            "node_usage",
         ]
     }
 
@@ -214,5 +313,36 @@ mod tests {
             )
             .expect("count");
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn migrate_v4_adds_agents_deleted_at_column() {
+        let tmp = NamedTempFile::new().expect("tempfile");
+        let conn = Connection::open(tmp.path()).expect("open");
+        conn.execute_batch(
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY);
+             CREATE TABLE agents (
+               id TEXT PRIMARY KEY,
+               name TEXT NOT NULL UNIQUE,
+               description TEXT,
+               workspace_path TEXT NOT NULL,
+               git_url TEXT,
+               default_cli TEXT NOT NULL,
+               status TEXT NOT NULL DEFAULT 'idle',
+               created_at TEXT NOT NULL,
+               updated_at TEXT NOT NULL
+             );
+             INSERT INTO schema_migrations(version) VALUES (3);",
+        )
+        .expect("seed v3 schema");
+        migrate(&conn).expect("migrate to v4");
+        assert!(table_has_column(&conn, "agents", "deleted_at").expect("check col"));
+
+        let version: i32 = conn
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |r| {
+                r.get(0)
+            })
+            .expect("version");
+        assert_eq!(version, 7);
     }
 }

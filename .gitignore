@@ -1,6 +1,6 @@
-# AgentMind
+# AgentFlow
 
-macOS app — personal AI agent brain & execution system (Tauri + Web UI).
+macOS app — personal AI agent orchestration & scheduling (Tauri + Web UI).
 
 ## Ignore
 .DS_Store
@@ -40,3 +40,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local browser automation artifacts
+.playwright-mcp/

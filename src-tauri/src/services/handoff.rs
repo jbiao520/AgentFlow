@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-pub const ARTIFACT_MARKER_FOOTER: &str = "\n\nWhen you create or update output files, print exactly one line per file:\nAGENTMIND_ARTIFACT:relative/path/from/workspace/root";
+pub const ARTIFACT_MARKER_FOOTER: &str = "\n\nWhen you create or update output files, print exactly one line per file:\nAGENTFLOW_ARTIFACT:relative/path/from/workspace/root";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HandoffInput {
@@ -64,7 +64,7 @@ pub fn parse_artifact_paths_json(json: Option<&str>) -> Vec<String> {
 /// Destination relative path inside the consumer workspace.
 pub fn handoff_relative_path(run_id: &str, pred_local_id: &str, original_rel: &str) -> String {
     format!(
-        ".agentmind/handoff/{run_id}/{pred_local_id}/{}",
+        ".agentflow/handoff/{run_id}/{pred_local_id}/{}",
         original_rel.trim_start_matches('/')
     )
 }
@@ -241,11 +241,11 @@ mod tests {
     fn handoff_relative_path_layout() {
         assert_eq!(
             handoff_relative_path("r1", "t1", "notes.md"),
-            ".agentmind/handoff/r1/t1/notes.md"
+            ".agentflow/handoff/r1/t1/notes.md"
         );
         assert_eq!(
             handoff_relative_path("r1", "t1", "out/a.md"),
-            ".agentmind/handoff/r1/t1/out/a.md"
+            ".agentflow/handoff/r1/t1/out/a.md"
         );
     }
 
@@ -266,11 +266,11 @@ mod tests {
         assert!(warnings.is_empty());
         assert_eq!(
             input.dest_relative_paths,
-            vec![".agentmind/handoff/run1/t1/notes.md".to_string()]
+            vec![".agentflow/handoff/run1/t1/notes.md".to_string()]
         );
         let dest = dest_ws
             .path()
-            .join(".agentmind/handoff/run1/t1/notes.md");
+            .join(".agentflow/handoff/run1/t1/notes.md");
         assert_eq!(fs::read_to_string(dest).unwrap(), "findings");
     }
 
@@ -289,7 +289,7 @@ mod tests {
         assert!(warnings.is_empty());
         assert!(ws
             .path()
-            .join(".agentmind/handoff/run1/t1/notes.md")
+            .join(".agentflow/handoff/run1/t1/notes.md")
             .is_file());
         assert_eq!(input.dest_relative_paths.len(), 1);
     }
@@ -338,12 +338,12 @@ mod tests {
         let inputs = vec![HandoffInput {
             from_title: "Collect".into(),
             from_local_id: "t1".into(),
-            dest_relative_paths: vec![".agentmind/handoff/r/t1/notes.md".into()],
+            dest_relative_paths: vec![".agentflow/handoff/r/t1/notes.md".into()],
         }];
         let prompt = enrich_prompt("Do the work.", &inputs);
         assert!(prompt.contains("## Inputs from previous steps"));
-        assert!(prompt.contains(".agentmind/handoff/r/t1/notes.md"));
-        assert!(prompt.contains("AGENTMIND_ARTIFACT:"));
+        assert!(prompt.contains(".agentflow/handoff/r/t1/notes.md"));
+        assert!(prompt.contains("AGENTFLOW_ARTIFACT:"));
         assert!(prompt.starts_with("Do the work."));
     }
 }

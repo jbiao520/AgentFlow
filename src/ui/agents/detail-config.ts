@@ -24,21 +24,9 @@ let reloadCatalog:
     }) => Promise<void>)
   | null = null;
 
-export function applyProfileToForm(
-  agent: Agent,
-  profile: AgentModelProfile | null,
-): void {
+export function applyProfileToForm(agent: Agent): void {
   const cli = el<HTMLSelectElement>("detail-cli-select");
   if (cli) cli.value = agent.default_cli || "codex";
-
-  const temp = el<HTMLInputElement>("detail-temperature");
-  const tempVal = el<HTMLElement>("temp-val");
-  const t = profile?.temperature ?? 0.2;
-  if (temp) temp.value = String(t);
-  if (tempVal) tempVal.textContent = String(t);
-
-  const auto = el<HTMLInputElement>("detail-auto-route");
-  if (auto) auto.checked = profile?.auto_route ?? true;
 
   const desc = el<HTMLInputElement>("detail-agent-description");
   if (desc) desc.value = agent.description || "";
@@ -75,7 +63,7 @@ export async function loadAgentDetailConfig(
     );
   }
 
-  applyProfileToForm(agent, profile);
+  applyProfileToForm(agent);
 
   if (reloadCatalog) {
     await reloadCatalog({
@@ -111,10 +99,6 @@ export async function saveAgentDetailConfig(): Promise<void> {
     el<HTMLSelectElement>("detail-model-select")?.value.trim() || null;
   const pills = el<HTMLElement>("detail-reasoning-pills");
   const reasoning = pills ? selectedEffort(pills) : "";
-  const temperature = parseFloat(
-    el<HTMLInputElement>("detail-temperature")?.value || "0.2",
-  );
-  const autoRoute = el<HTMLInputElement>("detail-auto-route")?.checked ?? true;
   const description =
     el<HTMLInputElement>("detail-agent-description")?.value.trim() || null;
 
@@ -130,8 +114,6 @@ export async function saveAgentDetailConfig(): Promise<void> {
       agent_id: agent.id,
       preferred_model: model,
       reasoning_effort: reasoning,
-      temperature: Number.isFinite(temperature) ? temperature : 0.2,
-      auto_route: autoRoute,
       engine_options_json,
     });
 
@@ -147,14 +129,7 @@ export async function saveAgentDetailConfig(): Promise<void> {
 
     const list = await listAgents();
     setCachedAgents(list);
-    applyProfileToForm(updated, {
-      agent_id: agent.id,
-      preferred_model: model,
-      reasoning_effort: reasoning,
-      temperature: Number.isFinite(temperature) ? temperature : 0.2,
-      auto_route: autoRoute,
-      engine_options_json,
-    });
+    applyProfileToForm(updated);
 
     if (reloadCatalog) {
       await reloadCatalog({
@@ -192,10 +167,4 @@ export function initDetailConfig(): void {
     ?.addEventListener("click", () => {
       void saveAgentDetailConfig();
     });
-
-  const temp = el<HTMLInputElement>("detail-temperature");
-  temp?.addEventListener("input", () => {
-    const val = el<HTMLElement>("temp-val");
-    if (val) val.textContent = temp.value;
-  });
 }

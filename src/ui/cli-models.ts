@@ -49,12 +49,65 @@ export function normalizeSavedModel(
   return { model: m, effort: e };
 }
 
+/**
+ * GPT major.minor extracted from a model id (optional provider/ prefix).
+ * e.g. openai/gpt-5.4-mini → {5,4}, gpt-5.6-sol → {5,6}, gpt-4o → {4,0}.
+ */
+function parseGptVersion(
+  modelId: string,
+): { major: number; minor: number } | null {
+  const name = modelId.includes("/")
+    ? (modelId.split("/").pop() ?? modelId)
+    : modelId;
+  const m = name.toLowerCase().match(/^gpt-(\d+)(?:\.(\d+))?/);
+  if (!m) return null;
+  return {
+    major: Number.parseInt(m[1], 10),
+    minor: m[2] ? Number.parseInt(m[2], 10) : 0,
+  };
+}
+
+/** True if this GPT id is 5.4 or earlier (inclusive). Non-GPT ids → false. */
+function isGptAtOrBefore54(modelId: string): boolean {
+  const ver = parseGptVersion(modelId);
+  if (!ver) return false;
+  if (ver.major < 5) return true;
+  if (ver.major > 5) return false;
+  return ver.minor <= 4;
+}
+
+/**
+ * Models hidden from the selection UI:
+ * 1. Any Claude model
+ * 2. GPT-5.4 and all earlier GPT versions
+ * 3. OpenCode-hosted free models (id starts with `opencode/`)
+ */
+export function isSelectableModel(modelId: string): boolean {
+  const id = modelId.trim();
+  if (!id) return false;
+  const lower = id.toLowerCase();
+  if (lower.includes("claude")) return false;
+  if (lower.startsWith("opencode/")) return false;
+  if (isGptAtOrBefore54(lower)) return false;
+  return true;
+}
+
+export function filterSelectableCatalog(
+  catalog: EngineModelCatalog,
+): EngineModelCatalog {
+  return {
+    ...catalog,
+    models: catalog.models.filter((m) => isSelectableModel(m.id)),
+  };
+}
+
 export async function loadCatalog(
   engine: string,
   opts?: { refresh?: boolean; silent?: boolean },
 ): Promise<EngineModelCatalog | null> {
   try {
-    return await listEngineModels(engine, opts?.refresh === true);
+    const catalog = await listEngineModels(engine, opts?.refresh === true);
+    return filterSelectableCatalog(catalog);
   } catch (err) {
     if (!opts?.silent) {
       showToast(

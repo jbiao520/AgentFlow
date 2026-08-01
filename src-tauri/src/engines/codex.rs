@@ -13,7 +13,7 @@ pub fn prepare(req: &EngineRunRequest) -> Result<PreparedCommand, String> {
         "-C".to_string(),
         req.cwd.clone(),
         "--skip-git-repo-check".to_string(),
-        // Full permissions for non-interactive automation. AgentMind already
+        // Full permissions for non-interactive automation. AgentFlow already
         // constrains cwd to the agent workspace (external sandbox).
         "--dangerously-bypass-approvals-and-sandbox".to_string(),
     ];

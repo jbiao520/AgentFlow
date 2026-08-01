@@ -45,10 +45,30 @@ pub struct CreateScheduleArgs {
     pub next_run_at: String,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default)]
+    pub cron_expr: Option<String>,
+    #[serde(default)]
+    pub window_start: Option<String>,
+    #[serde(default)]
+    pub window_end: Option<String>,
+    #[serde(default = "default_overlap")]
+    pub overlap_policy: String,
+    #[serde(default)]
+    pub max_retries: i64,
+    #[serde(default = "default_retry_delay")]
+    pub retry_delay_secs: i64,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_overlap() -> String {
+    "queue".into()
+}
+
+fn default_retry_delay() -> i64 {
+    300
 }
 
 #[tauri::command(rename = "create_schedule")]
@@ -67,6 +87,12 @@ pub fn create_schedule_cmd(
                 interval_secs: args.interval_secs,
                 next_run_at: args.next_run_at,
                 enabled: args.enabled,
+                cron_expr: args.cron_expr,
+                window_start: args.window_start,
+                window_end: args.window_end,
+                overlap_policy: args.overlap_policy,
+                max_retries: args.max_retries,
+                retry_delay_secs: args.retry_delay_secs,
             },
         )
     })
@@ -91,6 +117,24 @@ pub struct UpdateScheduleArgs {
     pub next_run_at: Option<String>,
     #[serde(default)]
     pub enabled: Option<bool>,
+    #[serde(default)]
+    pub cron_expr: Option<String>,
+    #[serde(default)]
+    pub clear_cron_expr: bool,
+    #[serde(default)]
+    pub window_start: Option<String>,
+    #[serde(default)]
+    pub clear_window_start: bool,
+    #[serde(default)]
+    pub window_end: Option<String>,
+    #[serde(default)]
+    pub clear_window_end: bool,
+    #[serde(default)]
+    pub overlap_policy: Option<String>,
+    #[serde(default)]
+    pub max_retries: Option<i64>,
+    #[serde(default)]
+    pub retry_delay_secs: Option<i64>,
 }
 
 #[tauri::command(rename = "update_schedule")]
@@ -102,6 +146,27 @@ pub fn update_schedule_cmd(
         Some(None)
     } else if args.interval_secs.is_some() {
         Some(args.interval_secs)
+    } else {
+        None
+    };
+    let cron_expr = if args.clear_cron_expr {
+        Some(None)
+    } else if args.cron_expr.is_some() {
+        Some(args.cron_expr)
+    } else {
+        None
+    };
+    let window_start = if args.clear_window_start {
+        Some(None)
+    } else if args.window_start.is_some() {
+        Some(args.window_start)
+    } else {
+        None
+    };
+    let window_end = if args.clear_window_end {
+        Some(None)
+    } else if args.window_end.is_some() {
+        Some(args.window_end)
     } else {
         None
     };
@@ -117,6 +182,12 @@ pub fn update_schedule_cmd(
                 interval_secs,
                 next_run_at: args.next_run_at,
                 enabled: args.enabled,
+                cron_expr,
+                window_start,
+                window_end,
+                overlap_policy: args.overlap_policy,
+                max_retries: args.max_retries,
+                retry_delay_secs: args.retry_delay_secs,
             },
         )
     })

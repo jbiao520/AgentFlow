@@ -1,15 +1,19 @@
 //! DAG runner: execute ready nodes with depends_on (success|skipped), concurrency-aware.
-use crate::engines::adapter::{EngineRunRequest, LogEvent};
+use crate::engines::adapter::{EngineRunRequest, LogEvent, TokenUsage};
 use crate::engines::runner::{run_engine_unchecked, validate_imported_workspace, CancelToken};
 use crate::repo::{
-    append_task_log, get_agent, get_plan, get_task_node, get_task_run, set_node_artifact_paths,
-    update_node_status, update_run_progress, TaskLogAppend, TaskNode, TaskRun,
+    append_task_log, get_agent, get_plan, get_task_node, get_task_run, record_node_usage,
+    record_schedule_run_result, set_node_artifact_paths, update_node_status, update_run_progress, NodeUsageInsert,
+    TaskLogAppend, TaskNode, TaskRun,
 };
 use crate::services::handoff::{
     copy_predecessor_artifacts, enrich_prompt, filter_existing_artifacts, node_local_id,
     normalize_artifact_path, parse_artifact_paths_json, HandoffInput,
 };
+use crate::services::delivery::{agent_prompt_footer, finalize_delivery_report};
+use crate::services::notify::notify_run_ended;
 use crate::services::orchestrate::{parse_plan_json, PlanSubtask};
+use crate::services::pricing::{estimate_cost, provider_for};
 use crate::services::recovery::settle_nodes_on_cancel;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -21,6 +25,21 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
 pub const DEFAULT_CONCURRENCY: usize = 1;
+/// Hard cap for DAG ready-node parallelism (model-suggested or user override).
+pub const MAX_CONCURRENCY: usize = 8;
+
+/// Clamp to `[DEFAULT_CONCURRENCY, MAX_CONCURRENCY]`.
+pub fn clamp_concurrency(n: usize) -> usize {
+    n.clamp(DEFAULT_CONCURRENCY, MAX_CONCURRENCY)
+}
+
+/// Resolve run concurrency: user override → plan field → default, then clamp.
+pub fn resolve_concurrency(
+    override_val: Option<usize>,
+    plan_val: Option<usize>,
+) -> usize {
+    clamp_concurrency(override_val.or(plan_val).unwrap_or(DEFAULT_CONCURRENCY))
+}
 
 /// Default per-node CLI wall-clock timeout.
 pub const DEFAULT_NODE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -103,6 +122,18 @@ fn emit_run_updated(app: &AppHandle, conn: &Connection, run_id: &str) {
     }
 }
 
+fn finalize_terminal_run(conn: &Connection, run_id: &str, run: TaskRun) -> TaskRun {
+    match finalize_delivery_report(conn, run_id) {
+        Ok(with_report) => with_report,
+        Err(error) => {
+            // A report must never prevent the terminal run state from being
+            // delivered. The missing report is visible through the log/error.
+            eprintln!("[AgentFlow] delivery report failed for {run_id}: {error}");
+            run
+        }
+    }
+}
+
 fn persist_log(
     conn: &Connection,
     app: &AppHandle,
@@ -143,8 +174,13 @@ fn persist_log(
 }
 
 fn extract_artifact_marker(line: &str) -> Option<String> {
-    const MARKER: &str = "AGENTMIND_ARTIFACT:";
-    line.find(MARKER).map(|i| line[i + MARKER.len()..].trim().to_string())
+    // Prefer current brand; still accept legacy AgentMind markers in old logs/runs.
+    for marker in ["AGENTFLOW_ARTIFACT:", "AGENTMIND_ARTIFACT:"] {
+        if let Some(i) = line.find(marker) {
+            return Some(line[i + marker.len()..].trim().to_string());
+        }
+    }
+    None
 }
 
 fn agent_workspace_path(conn: &Connection, agent_id: &str) -> Result<PathBuf, String> {
@@ -251,6 +287,7 @@ pub fn execute_node_with_db(
                     tags: vec![],
                 },
                 subtasks: vec![],
+                concurrency: None,
                 questions: vec![],
                 clarifications: vec![],
             }
@@ -286,7 +323,11 @@ pub fn execute_node_with_db(
         } else {
             format!("{prompt}\n\nEnabled skills: {skills_hint}")
         };
-        let full_prompt = enrich_prompt(&base_prompt, &handoff_inputs);
+        let full_prompt = format!(
+            "{}{}",
+            enrich_prompt(&base_prompt, &handoff_inputs),
+            agent_prompt_footer()
+        );
         let artifacts = subtask
             .map(|s| s.artifact_paths.clone())
             .unwrap_or_default();
@@ -351,6 +392,8 @@ pub fn execute_node_with_db(
     let artifacts_for_cb = Arc::clone(&artifacts_buf);
     let cwd_for_cb = cwd_path.clone();
 
+    let mut usage_acc = TokenUsage::default();
+
     let run_result = run_engine_unchecked(&req, cancel, Some(DEFAULT_NODE_TIMEOUT), move |ev: LogEvent| {
         if let Some(raw) = extract_artifact_marker(&ev.line) {
             if let Some(path) = normalize_artifact_path(&raw, &cwd_for_cb) {
@@ -386,7 +429,35 @@ pub fn execute_node_with_db(
                 &message,
             );
         }
-    });
+    }, Some(&mut |u: TokenUsage| usage_acc.merge(&u)));
+
+    if usage_acc.total_tokens_for_engine(&req.engine) > 0 || usage_acc.cost.is_some() {
+        let model = req.model.clone().filter(|m| !m.trim().is_empty());
+        let (cost, estimated) = match usage_acc.cost {
+            Some(c) => (Some(c), false),
+            None => (
+                estimate_cost(&req.engine, model.as_deref().unwrap_or("unknown"), &usage_acc),
+                true,
+            ),
+        };
+        let record = NodeUsageInsert {
+            run_id: run_id.to_string(),
+            node_id: node_id.to_string(),
+            engine: req.engine.clone(),
+            provider: provider_for(&req.engine, model.as_deref()),
+            model,
+            input_tokens: usage_acc.input_tokens,
+            cached_input_tokens: usage_acc.cached_input_tokens,
+            cache_write_input_tokens: usage_acc.cache_write_input_tokens,
+            output_tokens: usage_acc.output_tokens,
+            reasoning_tokens: usage_acc.reasoning_tokens,
+            cost,
+            estimated,
+        };
+        if let Ok(conn) = db.lock() {
+            let _ = record_node_usage(&conn, &record);
+        }
+    }
 
     let artifacts = artifacts_buf.lock().map(|g| g.clone()).unwrap_or_default();
     let conn = db.lock().map_err(|e| format!("db lock: {e}"))?;
@@ -489,7 +560,7 @@ pub fn run_dag_loop(
     cancel: CancelToken,
     concurrency: usize,
 ) -> Result<TaskRun, String> {
-    let concurrency = concurrency.max(1);
+    let concurrency = clamp_concurrency(concurrency);
     let run_deadline = Instant::now() + DEFAULT_RUN_MAX_DURATION;
 
     {
@@ -526,7 +597,10 @@ pub fn run_dag_loop(
                 progress_of(&full.nodes),
                 Some("cancelled"),
             )?;
+            let run = finalize_terminal_run(&conn, &run_id, run);
             emit_run_updated(&app, &conn, &run_id);
+            let _ = record_schedule_run_result(&conn, &run.id, &run.status, run.error.as_deref());
+            notify_run_ended(&app, &conn, &run);
             return Ok(run);
         }
 
@@ -545,7 +619,10 @@ pub fn run_dag_loop(
             let any_failed = nodes.iter().any(|n| n.status == "failed");
             let status = if any_failed { "failed" } else { "success" };
             let run = update_run_progress(&conn, &run_id, progress_of(&nodes), Some(status))?;
+            let run = finalize_terminal_run(&conn, &run_id, run);
             emit_run_updated(&app, &conn, &run_id);
+            let _ = record_schedule_run_result(&conn, &run.id, &run.status, run.error.as_deref());
+            notify_run_ended(&app, &conn, &run);
             return Ok(run);
         }
 
@@ -562,7 +639,10 @@ pub fn run_dag_loop(
                 "error",
                 "no ready nodes; remaining pending blocked by unsuccessful deps",
             );
+            let run = finalize_terminal_run(&conn, &run_id, run);
             emit_run_updated(&app, &conn, &run_id);
+            let _ = record_schedule_run_result(&conn, &run.id, &run.status, run.error.as_deref());
+            notify_run_ended(&app, &conn, &run);
             return Ok(run);
         }
 
@@ -675,6 +755,18 @@ mod tests {
         assert!(ids.contains(&"b"), "skipped predecessor should satisfy deps");
         assert!(ids.contains(&"d"));
         assert!(ids.contains(&"e"));
+    }
+
+    #[test]
+    fn resolve_concurrency_prefers_override_and_clamps() {
+        assert_eq!(resolve_concurrency(None, None), DEFAULT_CONCURRENCY);
+        assert_eq!(resolve_concurrency(None, Some(3)), 3);
+        assert_eq!(resolve_concurrency(Some(2), Some(5)), 2);
+        assert_eq!(resolve_concurrency(Some(0), None), DEFAULT_CONCURRENCY);
+        assert_eq!(resolve_concurrency(Some(99), None), MAX_CONCURRENCY);
+        assert_eq!(clamp_concurrency(0), 1);
+        assert_eq!(clamp_concurrency(8), 8);
+        assert_eq!(clamp_concurrency(9), 8);
     }
 
     #[test]

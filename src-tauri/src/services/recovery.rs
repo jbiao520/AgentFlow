@@ -78,6 +78,10 @@ pub fn finalize_interrupted_run(
         },
     );
 
+    // Keep cancelled/orphaned runs equally auditable; there is no DAG loop to
+    // perform the normal terminal report step in this path.
+    let _ = crate::services::delivery::finalize_delivery_report(conn, run_id);
+
     Ok(())
 }
 

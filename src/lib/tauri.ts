@@ -1,5 +1,5 @@
 /**
- * AgentMind Tauri IPC convention (Phase 2+):
+ * AgentFlow Tauri IPC convention (Phase 2+):
  * - Domain APIs live in `src/lib/api/*` (agents, settings, tasks).
  * - Task APIs persist goals/plans/runs only; CLI execution is Phase 5.
  * - This module keeps system hello-path helpers (`ping`, `app_info`, `reveal_in_finder`).
@@ -32,7 +32,7 @@ export async function ping(): Promise<string> {
 export async function getAppInfo(): Promise<AppInfo> {
   if (!isTauri()) {
     return {
-      name: "AgentMind",
+      name: "AgentFlow",
       version: "0.1.0",
       tauri_version: "browser",
     };

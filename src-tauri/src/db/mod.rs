@@ -1,3 +1,4 @@
+pub mod legacy_migrate;
 pub mod migrate;
 pub mod path;
 
@@ -10,6 +11,9 @@ pub use path::{db_path, ensure_db_dir};
 
 /// Open (or create) the app DB and run migrations.
 pub fn open_db() -> Result<Connection, String> {
+    // AgentMind → AgentFlow one-shot data move (no-op when already migrated).
+    legacy_migrate::migrate_from_agentmind()?;
+
     let path = ensure_db_dir()?;
     let conn = Connection::open(&path).map_err(|e| format!("open db {}: {e}", path.display()))?;
     conn.execute_batch("PRAGMA foreign_keys = ON;")

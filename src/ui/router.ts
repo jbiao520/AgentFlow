@@ -14,7 +14,8 @@ export type ViewId =
   | "commander"
   | "tasks"
   | "templates"
-  | "schedules";
+  | "schedules"
+  | "settings";
 
 const VIEW_IDS: readonly ViewId[] = [
   "overview",
@@ -24,6 +25,7 @@ const VIEW_IDS: readonly ViewId[] = [
   "tasks",
   "templates",
   "schedules",
+  "settings",
 ] as const;
 
 export { getSelectedAgentId };
@@ -70,6 +72,9 @@ export function showView(id: ViewId): void {
   }
   if (id === "schedules") {
     void import("./schedules/page").then((m) => m.refreshSchedules());
+  }
+  if (id === "settings") {
+    void import("./settings/page").then((m) => m.refreshSettings());
   }
 }
 

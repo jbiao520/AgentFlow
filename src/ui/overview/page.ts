@@ -1,14 +1,13 @@
 /**
- * Overview page: live stats, topology SVG, running queue from SQLite.
+ * Overview page: live stats, recent agents usage, running queue from SQLite.
  */
 import {
   getOverviewStats,
-  getOverviewTopology,
+  listRecentAgents,
   listRunningQueue,
   type OverviewStats,
-  type OverviewTopology,
   type QueueItem,
-  type TopologyNode,
+  type RecentAgentUsage,
 } from "../../lib/api/overview";
 import { updateNavCounts } from "../nav-counts";
 import { selectAgentById, showView } from "../router";
@@ -29,13 +28,68 @@ function truncate(s: string, n: number): string {
   return `${t.slice(0, n - 1)}…`;
 }
 
-function strokeForStatus(status: string, kind: string): string {
-  if (kind === "orchestrator") return "#2563eb";
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 10_000) return `${(n / 1_000).toFixed(1)}k`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(2)}k`;
+  return String(n);
+}
+
+function formatCost(cost: number): string {
+  if (cost <= 0) return "$0";
+  if (cost >= 100) return `$${cost.toFixed(2)}`;
+  return `$${cost.toPrecision(3)}`;
+}
+
+function shortModel(model: string): string {
+  // "deepseek/deepseek-v4-flash" → "deepseek·v4-flash"
+  const [provider, ...rest] = model.split("/");
+  if (rest.length === 0) return model;
+  const name = rest.join("/");
+  const shortName = name.length > 16 ? `${name.slice(0, 15)}…` : name;
+  return `${provider}·${shortName}`;
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/[\s\-_./]+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+function statusBadgeClass(status: string): string {
   const s = status.toLowerCase();
-  if (s === "working" || s === "running") return "#d97706";
-  if (s === "error") return "#dc2626";
-  if (s === "idle") return "#059669";
-  return "#cbd5e1";
+  if (s === "working" || s === "running") return "badge-working";
+  if (s === "error") return "badge-error";
+  return "badge-idle";
+}
+
+function statusLabel(status: string): string {
+  const s = status.toLowerCase();
+  if (s === "working" || s === "running") return "working";
+  if (s === "error") return "error";
+  return "idle";
+}
+
+function formatRelative(iso: string | null): string {
+  if (!iso) return "—";
+  const t = iso.trim().replace(/Z$/, "");
+  const ms = Date.parse(t.includes("T") ? `${t}Z` : t);
+  if (Number.isNaN(ms)) return iso.slice(0, 16);
+  const diff = Math.max(0, Date.now() - ms);
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "刚刚";
+  if (mins < 60) return `${mins} 分钟前`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} 小时前`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days} 天前`;
+  return iso.slice(0, 10);
+}
+
+function callBarWidth(value: number, max: number): number {
+  if (max <= 0 || value <= 0) return 0;
+  return Math.max(6, Math.round((value / max) * 100));
 }
 
 function renderStats(stats: OverviewStats): void {
@@ -75,164 +129,152 @@ function renderStats(stats: OverviewStats): void {
     "var(--accent-emerald)",
   );
 
-  set("overview-stat-tokens", stats.tokens_display);
-  set("overview-stat-tokens-sub", "未计量 (v1)");
-}
-
-function layoutPositions(
-  agents: TopologyNode[],
-): Map<string, { x: number; y: number }> {
-  const map = new Map<string, { x: number; y: number }>();
-  map.set("orchestrator", { x: 30, y: 95 });
-
-  const midX = 320;
-  const rightX = 630;
-  const n = agents.length;
-  if (n === 0) return map;
-
-  // Put first half in middle column, rest on right (collaboration targets)
-  const midCount = Math.ceil(n / 2);
-  const midAgents = agents.slice(0, midCount);
-  const rightAgents = agents.slice(midCount);
-
-  const placeCol = (
-    list: TopologyNode[],
-    x: number,
-    startY: number,
-    gap: number,
-  ) => {
-    list.forEach((a, i) => {
-      const y =
-        list.length === 1
-          ? 95
-          : startY + i * gap;
-      map.set(a.id, { x, y });
-    });
-  };
-
-  if (rightAgents.length === 0) {
-    const gap = n === 1 ? 0 : Math.min(70, 180 / Math.max(n - 1, 1));
-    const startY = n === 1 ? 95 : Math.max(20, 125 - ((n - 1) * gap) / 2);
-    placeCol(agents, midX, startY, gap);
-  } else {
-    const midGap =
-      midAgents.length <= 1
-        ? 0
-        : Math.min(70, 160 / Math.max(midAgents.length - 1, 1));
-    const midStart =
-      midAgents.length === 1
-        ? 95
-        : Math.max(20, 125 - ((midAgents.length - 1) * midGap) / 2);
-    placeCol(midAgents, midX, midStart, midGap);
-
-    const rightGap =
-      rightAgents.length <= 1
-        ? 0
-        : Math.min(70, 160 / Math.max(rightAgents.length - 1, 1));
-    const rightStart =
-      rightAgents.length === 1
-        ? 95
-        : Math.max(20, 125 - ((rightAgents.length - 1) * rightGap) / 2);
-    placeCol(rightAgents, rightX, rightStart, rightGap);
-  }
-
-  return map;
-}
-
-function renderTopology(topo: OverviewTopology): void {
-  const caption = document.getElementById("overview-topology-caption");
-  if (caption) caption.textContent = topo.caption;
-
-  const svg = document.getElementById("overview-topology-svg");
-  if (!svg) return;
-
-  const agents = topo.nodes.filter((n) => n.kind === "agent");
-  const positions = layoutPositions(agents);
-  const nodeW = 150;
-  const nodeH = 60;
-  const hubW = 140;
-
-  const centerOf = (id: string, isHub: boolean) => {
-    const p = positions.get(id) || { x: 30, y: 95 };
-    const w = isHub ? hubW : nodeW;
-    return { cx: p.x + w / 2, cy: p.y + nodeH / 2, x: p.x, y: p.y, w };
-  };
-
-  let paths = "";
-  for (const e of topo.edges) {
-    const fromHub = e.from_id === "orchestrator";
-    const toHub = e.to_id === "orchestrator";
-    const from = centerOf(e.from_id, fromHub);
-    const to = centerOf(e.to_id, toHub);
-    const x1 = fromHub ? from.x + from.w : from.cx;
-    const y1 = from.cy;
-    const x2 = toHub ? to.x : to.x;
-    const y2 = to.cy;
-    const mx = (x1 + x2) / 2;
-    const dash = e.style === "dashed" ? ' stroke-dasharray="4"' : "";
-    const color = fromHub ? "#2563eb" : "#059669";
-    paths += `<path d="M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}" fill="none" stroke="${color}" stroke-width="1.5"${dash} class="flowing-edge" marker-end="url(#arrow)"/>`;
-  }
-
-  let nodesHtml = "";
-  for (const n of topo.nodes) {
-    const isHub = n.kind === "orchestrator";
-    const p = positions.get(n.id) || { x: 30, y: 95 };
-    const w = isHub ? hubW : nodeW;
-    const stroke = strokeForStatus(n.status, n.kind);
-    const click = isHub
-      ? `data-topo-action="commander"`
-      : `data-topo-action="agent" data-agent-id="${escapeHtml(n.id)}"`;
-    const statusDot =
-      !isHub &&
-      (n.status.toLowerCase() === "working" ||
-        n.status.toLowerCase() === "running")
-        ? `<circle cx="${w - 14}" cy="12" r="3.5" fill="${stroke}"/>`
+  set("overview-stat-tokens", formatTokens(stats.tokens_total));
+  const tokensSub = document.getElementById("overview-stat-tokens-sub");
+  if (tokensSub) {
+    if (stats.tokens_total === 0 || stats.usage_breakdown.length === 0) {
+      tokensSub.innerHTML = `<span style="color:var(--fg-muted);">尚无消耗数据 — 运行任务后自动统计</span>`;
+    } else {
+      const anyEstimated = stats.usage_breakdown.some((b) => b.estimated);
+      const costText =
+        stats.tokens_cost != null
+          ? ` · ${formatCost(stats.tokens_cost)}${anyEstimated ? "（估算）" : ""}`
+          : "";
+      const totalLine = `${formatTokens(stats.tokens_total)} tok${costText}`;
+      const rows = stats.usage_breakdown
+        .slice(0, 3)
+        .map((b) => {
+          const costPart =
+            b.cost != null
+              ? ` · ${formatCost(b.cost)}${b.estimated ? "（估算）" : ""}`
+              : "";
+          const label =
+            b.model === "unknown" ? b.engine : shortModel(b.model);
+          return `<div>${escapeHtml(label)} ${formatTokens(b.total_tokens)}${escapeHtml(costPart)}</div>`;
+        })
+        .join("");
+      const more =
+        stats.usage_breakdown.length > 3
+          ? `<div style="color:var(--fg-muted);">+${stats.usage_breakdown.length - 3} 更多模型…</div>`
+          : "";
+      const estimateNote = anyEstimated
+        ? `<div style="color:var(--fg-muted); font-size:10px; margin-top:2px;">费用为启发式估算，非账单</div>`
         : "";
-    const label = escapeHtml(truncate(n.label, 18));
-    const sub = escapeHtml(truncate(n.sublabel || "", 22));
-    const textAnchor = isHub ? ' text-anchor="middle"' : "";
-    const hubWeight = isHub ? ' font-weight="600"' : "";
-    const labelX = isHub ? w / 2 : 12;
-    const labelSize = isHub ? 12 : 11;
-    const subColor = isHub ? "#2563eb" : "#64748b";
-    nodesHtml += `
-      <g class="topology-node" transform="translate(${p.x}, ${p.y})" ${click} style="cursor:pointer">
-        <rect width="${w}" height="${nodeH}" rx="8" fill="#ffffff" stroke="${stroke}" stroke-width="${isHub ? 1.5 : 1.2}"/>
-        ${statusDot}
-        <text x="${labelX}" y="26" fill="#0f172a" font-size="${labelSize}" font-weight="bold" font-family="var(--font-mono)"${textAnchor}>${label}</text>
-        <text x="${labelX}" y="42" fill="${subColor}" font-size="10"${hubWeight}${textAnchor}>${sub}</text>
-      </g>`;
+      tokensSub.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:2px; line-height:1.5; text-align:left; font-family:var(--font-mono);">
+          <div style="color:var(--accent-purple); font-weight:700;">${escapeHtml(totalLine)}</div>
+          ${rows}
+          ${more}
+          ${estimateNote}
+        </div>`;
+    }
+  }
+}
+
+function renderRecentAgents(items: RecentAgentUsage[]): void {
+  const caption = document.getElementById("overview-recent-caption");
+  const body = document.getElementById("overview-recent-body");
+  if (!body) return;
+
+  if (items.length === 0) {
+    if (caption) caption.textContent = "近 30 天无调用记录";
+    body.innerHTML = `
+      <div class="recent-agents-empty">
+        <div style="color:var(--fg-muted); font-size:13px;">近 30 天还没有 Agent 被调度。</div>
+        <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" data-od-id="overview-recent-empty-dispatch">发起调度</button>
+          <button class="btn btn-secondary btn-sm" data-od-id="overview-recent-empty-agents">打开 Agent 矩阵</button>
+        </div>
+      </div>`;
+    body
+      .querySelector("[data-od-id='overview-recent-empty-dispatch']")
+      ?.addEventListener("click", () => showView("commander"));
+    body
+      .querySelector("[data-od-id='overview-recent-empty-agents']")
+      ?.addEventListener("click", () => showView("agents"));
+    return;
   }
 
-  if (agents.length === 0) {
-    nodesHtml += `
-      <text x="450" y="130" fill="#64748b" font-size="12" text-anchor="middle">暂无 Agent — 点击导入或打开 Agents</text>`;
+  if (caption) {
+    caption.textContent = `Top ${items.length} · 按 7 日调用排序`;
   }
 
-  svg.innerHTML = `
-    <defs>
-      <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
-        <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgba(0,0,0,0.035)" stroke-width="1"/>
-      </pattern>
-      <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-        <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
-      </marker>
-    </defs>
-    <rect width="100%" height="100%" fill="url(#grid)" />
-    ${paths}
-    ${nodesHtml}
-  `;
+  const max1 = Math.max(...items.map((i) => i.calls_1d), 1);
+  const max7 = Math.max(...items.map((i) => i.calls_7d), 1);
+  const max30 = Math.max(...items.map((i) => i.calls_30d), 1);
 
-  svg.querySelectorAll("[data-topo-action]").forEach((el) => {
-    el.addEventListener("click", () => {
-      const action = el.getAttribute("data-topo-action");
-      if (action === "commander") {
-        showView("commander");
-        return;
+  body.innerHTML = `
+    <div class="recent-agents-table-wrap">
+      <table class="recent-agents-table">
+        <thead>
+          <tr>
+            <th>Agent</th>
+            <th class="num">1 日</th>
+            <th class="num">7 日</th>
+            <th class="num">30 日</th>
+            <th class="muted">最近调用</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items
+            .map((item) => {
+              const badge = statusBadgeClass(item.status);
+              const label = statusLabel(item.status);
+              return `
+            <tr class="recent-agent-row" data-agent-id="${escapeHtml(item.agent_id)}" tabindex="0" role="button">
+              <td>
+                <div class="recent-agent-identity">
+                  <div class="agent-avatar-badge">${escapeHtml(initials(item.name))}</div>
+                  <div class="recent-agent-meta">
+                    <div class="recent-agent-name">${escapeHtml(truncate(item.name, 28))}</div>
+                    <div class="recent-agent-sub">
+                      <span class="agent-status-badge ${badge}" style="padding:1px 7px; font-size:10px;">
+                        <span class="status-dot" style="width:5px;height:5px;"></span>${escapeHtml(label)}
+                      </span>
+                      <span class="skill-tag" style="margin:0;">${escapeHtml(item.default_cli || "—")}</span>
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td class="num">
+                <div class="call-stat">
+                  <span class="call-count">${item.calls_1d}</span>
+                  <div class="call-bar"><div class="call-bar-fill call-bar-1d" style="width:${callBarWidth(item.calls_1d, max1)}%"></div></div>
+                </div>
+              </td>
+              <td class="num">
+                <div class="call-stat">
+                  <span class="call-count">${item.calls_7d}</span>
+                  <div class="call-bar"><div class="call-bar-fill call-bar-7d" style="width:${callBarWidth(item.calls_7d, max7)}%"></div></div>
+                </div>
+              </td>
+              <td class="num">
+                <div class="call-stat">
+                  <span class="call-count">${item.calls_30d}</span>
+                  <div class="call-bar"><div class="call-bar-fill call-bar-30d" style="width:${callBarWidth(item.calls_30d, max30)}%"></div></div>
+                </div>
+              </td>
+              <td class="muted" style="font-family:var(--font-mono); font-size:11.5px;">${escapeHtml(formatRelative(item.last_used_at))}</td>
+            </tr>`;
+            })
+            .join("")}
+        </tbody>
+      </table>
+    </div>`;
+
+  const openAgent = (el: Element) => {
+    const id = el.getAttribute("data-agent-id");
+    if (id) void selectAgentById(id);
+  };
+
+  body.querySelectorAll(".recent-agent-row").forEach((row) => {
+    row.addEventListener("click", () => openAgent(row));
+    row.addEventListener("keydown", (ev) => {
+      const e = ev as KeyboardEvent;
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openAgent(row);
       }
-      const id = el.getAttribute("data-agent-id");
-      if (id) void selectAgentById(id);
     });
   });
 }
@@ -274,10 +316,10 @@ function renderQueue(items: QueueItem[]): void {
             <div style="font-size:11px; color:var(--fg-muted);">拆解 ${item.node_count} 个子任务 · ${escapeHtml(item.status)}</div>
           </td>
           <td style="padding:10px;">${agents}</td>
-          <td style="padding:10px; font-family:var(--font-mono); font-size:11px; color:#7c3aed;">${engines}</td>
+          <td style="padding:10px; font-family:var(--font-mono); font-size:11px; color:var(--accent-primary);">${engines}</td>
           <td style="padding:10px;">
             <div style="display:flex; align-items:center; gap:8px;">
-              <div style="flex:1; background:#e2e8f0; height:5px; border-radius:3px; overflow:hidden;">
+              <div style="flex:1; background:var(--bg-subtle); height:5px; border-radius:3px; overflow:hidden;">
                 <div style="width:${pct}%; background:var(--accent-amber); height:100%;"></div>
               </div>
               <span style="font-size:11px; color:var(--accent-amber); font-family:var(--font-mono);">${pct}%</span>
@@ -299,13 +341,13 @@ function renderQueue(items: QueueItem[]): void {
 
 export async function refreshOverview(): Promise<void> {
   try {
-    const [stats, topo, queue] = await Promise.all([
+    const [stats, recent, queue] = await Promise.all([
       getOverviewStats(),
-      getOverviewTopology(),
+      listRecentAgents(),
       listRunningQueue(),
     ]);
     renderStats(stats);
-    renderTopology(topo);
+    renderRecentAgents(recent);
     renderQueue(queue);
     updateNavCounts(stats.agent_count, stats.running_tasks);
   } catch (e) {

@@ -1,7 +1,7 @@
-# Phase 4 — CLI flags research (AgentMind adapters)
+# Phase 4 — CLI flags research (AgentFlow adapters)
 
 Captured on: 2026-07-31 (darwin arm64)  
-Working directory for research: `/Users/jianguo/IdeaProjects/AgentMind`  
+Working directory for research: `/Users/jianguo/IdeaProjects/AgentFlow`  
 Scope: non-interactive / scripted argv useful for prompt, model, reasoning/effort, and cwd.
 
 **Adapter source of truth (confirmed 2026-07-31):** Engine adapters under `src-tauri/src/engines/` implement the Recommended templates below. Re-run `--help` only if a binary major-version bumps; amend this file before changing argv.
@@ -54,7 +54,7 @@ cursor-agent --print \
   "<PROMPT>"
 ```
 
-With effort (AgentMind stores base model + effort separately; adapter recomposes suffix):
+With effort (AgentFlow stores base model + effort separately; adapter recomposes suffix):
 
 ```bash
 cursor-agent --print \
@@ -65,7 +65,7 @@ cursor-agent --print \
   "<PROMPT>"
 ```
 
-Parameterized bracket overrides remain valid if a full id already embeds options, but AgentMind's adapter prefers the **suffix** form `{base}-{effort}` to match `cursor-agent models` ids.
+Parameterized bracket overrides remain valid if a full id already embeds options, but AgentFlow's adapter prefers the **suffix** form `{base}-{effort}` to match `cursor-agent models` ids.
 Sandbox / DAG streaming (adapters decode JSONL → `[AGENT]` / `[THINK]` terminal lines):
 
 ```bash
@@ -85,7 +85,7 @@ Orchestrate keeps `--output-format text` so the final Plan blob stays parseable.
 
 - Verified on this machine.
 - `--trust` only skips the workspace trust prompt. Shell/tool approval still needs `--force` (`--yolo` alias) or commands are rejected in non-interactive `--print` runs.
-- No standalone `--reasoning` / `--effort` flag; AgentMind recomposes `--model {base}-{effort}` from catalog suffixes (`low|medium|high|xhigh|max`). Bracket overrides (`model[effort=…]`) are still accepted by the CLI but not used by the adapter.
+- No standalone `--reasoning` / `--effort` flag; AgentFlow recomposes `--model {base}-{effort}` from catalog suffixes (`low|medium|high|xhigh|max`). Bracket overrides (`model[effort=…]`) are still accepted by the CLI but not used by the adapter.
 - `--mode plan|ask` and `--plan` are read-oriented modes, not the primary “run agent” path for write-capable automation.
 
 ---
@@ -148,7 +148,7 @@ codex exec -C "<CWD>" -c model="<MODEL>" "<PROMPT>"
 
 - Verified on this machine (codex-cli 0.145.0).
 - Use **`codex exec`**, not interactive `codex [PROMPT]`, for Phase 4 adapters.
-- Adapter uses `--dangerously-bypass-approvals-and-sandbox` so shell/tool calls are not blocked in headless runs. AgentMind already constrains cwd to the imported agent workspace.
+- Adapter uses `--dangerously-bypass-approvals-and-sandbox` so shell/tool calls are not blocked in headless runs. AgentFlow already constrains cwd to the imported agent workspace.
 - Sandbox / DAG runs pass `--json` and decode JSONL into live `[AGENT]` / `[STATUS]` terminal lines.
 - No `--effort` / `--reasoning` in `codex exec --help`; document any reasoning settings as config (`-c …`) once confirmed against `~/.codex/config.toml` schema — mark adapter wiring **UNVERIFIED** until validated.
 
@@ -206,7 +206,7 @@ opencode run --dir "<CWD>" -m "<provider>/<model>" "<PROMPT>"
 
 ## Cross-engine argv mapping (adapter sketch)
 
-| AgentMind concept | Cursor Agent | Codex | OpenCode |
+| AgentFlow concept | Cursor Agent | Codex | OpenCode |
 |-------------------|--------------|-------|----------|
 | Prompt | positional args | `exec` positional / stdin | `run` positional `message..` |
 | Model | `--model` | `-m` / `-c model=` | `-m provider/model` |

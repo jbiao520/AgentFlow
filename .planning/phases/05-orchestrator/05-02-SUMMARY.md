@@ -5,7 +5,7 @@
 ## Accomplishments
 - `dispatch_plan(plan_id)` → new run + pending nodes each time (re-dispatch allowed)
 - `start_run` / `cancel_run` background DAG loop; deps satisfied only if predecessor `success`
-- Logs persisted + emitted; artifact paths from plan or `AGENTMIND_ARTIFACT:` marker
+- Logs persisted + emitted; artifact paths from plan or `AGENTFLOW_ARTIFACT:` marker
 - `retry_node` / `skip_node` / `read_workspace_file` (workspace-constrained) ready for Task Center
 - Dispatch button on workbench calls dispatch + start_run
 

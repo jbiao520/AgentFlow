@@ -34,7 +34,7 @@ fn polish_cwd() -> Result<String, String> {
 
 pub fn build_polish_prompt(goal_prompt: &str, plan_json: &str) -> String {
     format!(
-        r#"You are preparing a reusable execution template for AgentMind.
+        r#"You are preparing a reusable execution template for AgentFlow.
 
 Given an original goal and a Plan JSON (DAG of subtasks), produce a polished template:
 
@@ -119,7 +119,7 @@ pub fn polish_template_blocking(
             }
             stderr_buf.push_str(&ev.line);
         }
-    });
+    }, None);
 
     let raw = if stdout_buf.trim().is_empty() {
         stderr_buf

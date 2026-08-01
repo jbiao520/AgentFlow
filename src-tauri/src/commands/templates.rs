@@ -305,6 +305,9 @@ pub struct InstantiateTemplateArgs {
     /// If true, dispatch + start after creating plan.
     #[serde(default)]
     pub dispatch: bool,
+    /// User override for this run only (1–8). Absent → use plan.concurrency / default.
+    #[serde(default)]
+    pub concurrency: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -376,7 +379,7 @@ pub fn instantiate_template(
         .ok_or_else(|| "orchestrate succeeded but plan_row missing".to_string())?;
 
     let dispatched = with_db(&state, |c| svc_dispatch(c, &plan_id))?;
-    let started = start_run(app, state, runs, dispatched.run.id.clone(), None)?;
+    let started = start_run(app, state, runs, dispatched.run.id.clone(), args.concurrency)?;
 
     Ok(InstantiateTemplateResult {
         orchestrate: orch,

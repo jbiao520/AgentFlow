@@ -17,6 +17,7 @@ export type Agent = {
   status: string;
   created_at: string;
   updated_at: string;
+  deleted_at: string | null;
 };
 
 export type AgentUpsert = {
@@ -33,8 +34,6 @@ export type AgentModelProfile = {
   agent_id: string;
   preferred_model: string | null;
   reasoning_effort: string | null;
-  temperature: number | null;
-  auto_route: boolean;
   engine_options_json: string | null;
 };
 
@@ -83,19 +82,7 @@ export async function importAgent(input: {
   description?: string | null;
 }): Promise<ImportAgentResult> {
   if (!isTauri()) {
-    const now = new Date().toISOString();
-    const agent: Agent = {
-      id: "browser-mock-agent",
-      name: input.name,
-      description: input.description ?? null,
-      workspace_path: input.workspace_path_or_git,
-      git_url: null,
-      default_cli: input.default_cli,
-      status: "idle",
-      created_at: now,
-      updated_at: now,
-    };
-    return { agent, cloned: false, workspace_path: input.workspace_path_or_git };
+    throw new Error("导入 Agent 需要桌面应用（Tauri）运行时");
   }
   return invoke<ImportAgentResult>("import_agent", {
     name: input.name,
@@ -107,18 +94,7 @@ export async function importAgent(input: {
 
 export async function upsertAgent(agent: AgentUpsert): Promise<Agent> {
   if (!isTauri()) {
-    const now = new Date().toISOString();
-    return {
-      id: agent.id ?? "browser-mock-agent",
-      name: agent.name,
-      description: agent.description ?? null,
-      workspace_path: agent.workspace_path,
-      git_url: agent.git_url ?? null,
-      default_cli: agent.default_cli,
-      status: agent.status ?? "idle",
-      created_at: now,
-      updated_at: now,
-    };
+    throw new Error("保存 Agent 需要桌面应用（Tauri）运行时");
   }
   return invoke<Agent>("upsert_agent", { agent });
 }
@@ -159,16 +135,7 @@ export async function setSkillEnabled(
   enabled: boolean,
 ): Promise<Skill> {
   if (!isTauri()) {
-    return {
-      id,
-      agent_id: "browser-mock",
-      relative_path: "",
-      title: null,
-      description: null,
-      enabled,
-      content_hash: null,
-      scanned_at: null,
-    };
+    throw new Error("切换 Skill 需要桌面应用（Tauri）运行时");
   }
   return invoke<Skill>("set_skill_enabled", { id, enabled });
 }
@@ -190,7 +157,9 @@ export async function readSkillContent(
   agentId: string,
   relativePath: string,
 ): Promise<string> {
-  if (!isTauri()) return `# ${relativePath}\n\n(browser mock)`;
+  if (!isTauri()) {
+    throw new Error("读取 Skill 需要桌面应用（Tauri）运行时");
+  }
   return invoke<string>("read_skill_content", {
     agentId,
     relativePath,

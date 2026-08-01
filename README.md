@@ -1,6 +1,6 @@
-# AgentMind
+# AgentFlow
 
-Personal AI agent brain & execution system for macOS (Tauri 2 + Vite + TypeScript).
+Personal AI agent orchestration & scheduling for macOS (Tauri 2 + Vite + TypeScript).
 
 ## Prerequisites
 
@@ -38,13 +38,13 @@ After a successful `npm run tauri build`:
 
 | Artifact | Path |
 |----------|------|
-| App bundle | `src-tauri/target/release/bundle/macos/AgentMind.app` |
+| App bundle | `src-tauri/target/release/bundle/macos/AgentFlow.app` |
 | DMG (if built) | `src-tauri/target/release/bundle/dmg/` |
 
 Launch:
 
 ```bash
-open src-tauri/target/release/bundle/macos/AgentMind.app
+open src-tauri/target/release/bundle/macos/AgentFlow.app
 ```
 
 Capabilities (`src-tauri/capabilities/default.json`) stay minimal: `core:default` + `opener:default`. Workspace FS and CLI process spawn run in the Rust backend (not via Tauri shell/fs plugins).

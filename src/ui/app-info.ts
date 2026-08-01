@@ -38,7 +38,7 @@ export async function initAppInfo(): Promise<void> {
     console.warn("initAppInfo failed", err);
   }
 
-  (window as unknown as { __agentmindDebug: unknown }).__agentmindDebug = {
+  (window as unknown as { __agentflowDebug: unknown }).__agentflowDebug = {
     ping,
     getAppInfo,
     revealInFinder,

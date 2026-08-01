@@ -31,6 +31,41 @@ export type TaskRun = {
   started_at: string | null;
   finished_at: string | null;
   error: string | null;
+  delivery_report_json: string | null;
+  schedule_id: string | null;
+  is_manual: boolean;
+  /** Goal prompt — human-readable title for history list. */
+  goal_prompt?: string;
+};
+
+export type DeliveryChangedFile = {
+  path: string;
+  status: string;
+  workspace: string;
+};
+
+export type DeliveryArtifact = {
+  path: string;
+  node_id: string;
+  node_title: string;
+  agent_id: string | null;
+  exists: boolean;
+};
+
+export type DeliveryVerification = {
+  label: string;
+  status: "passed" | "failed" | "skipped" | "unknown" | string;
+  detail: string;
+};
+
+export type DeliveryReport = {
+  generated_at: string;
+  summary: string;
+  changed_files: DeliveryChangedFile[];
+  diff: string | null;
+  artifacts: DeliveryArtifact[];
+  verification: DeliveryVerification[];
+  risks: string[];
 };
 
 export type TaskNode = {
@@ -93,12 +128,7 @@ export async function createGoal(
   templateKey?: string | null,
 ): Promise<Goal> {
   if (!isTauri()) {
-    return {
-      id: "browser-mock-goal",
-      prompt,
-      template_key: templateKey ?? null,
-      created_at: new Date().toISOString(),
-    };
+    throw new Error("createGoal requires Tauri runtime");
   }
   return invoke<Goal>("create_goal", {
     prompt,
@@ -111,12 +141,7 @@ export async function savePlan(
   analysisJson: string,
 ): Promise<Plan> {
   if (!isTauri()) {
-    return {
-      id: "browser-mock-plan",
-      goal_id: goalId,
-      analysis_json: analysisJson,
-      created_at: new Date().toISOString(),
-    };
+    throw new Error("savePlan requires Tauri runtime");
   }
   return invoke<Plan>("save_plan", { goalId, analysisJson });
 }
@@ -126,16 +151,7 @@ export async function createTaskRun(
   planId: string,
 ): Promise<TaskRun> {
   if (!isTauri()) {
-    return {
-      id: "browser-mock-run",
-      goal_id: goalId,
-      plan_id: planId,
-      status: "queued",
-      progress: 0,
-      started_at: new Date().toISOString(),
-      finished_at: null,
-      error: null,
-    };
+    throw new Error("createTaskRun requires Tauri runtime");
   }
   return invoke<TaskRun>("create_task_run", { goalId, planId });
 }
@@ -179,38 +195,14 @@ export async function updateNodeStatus(
   status: string,
 ): Promise<TaskNode> {
   if (!isTauri()) {
-    return {
-      id: nodeId,
-      run_id: "browser-mock-run",
-      seq: 0,
-      title: "",
-      agent_id: null,
-      skill_ids_json: null,
-      cli_engine: null,
-      model: null,
-      reasoning_effort: null,
-      depends_on_json: null,
-      status,
-      started_at: null,
-      finished_at: null,
-      artifact_paths_json: null,
-      retry_count: 0,
-    };
+    throw new Error("updateNodeStatus requires Tauri runtime");
   }
   return invoke<TaskNode>("update_node_status", { nodeId, status });
 }
 
 export async function appendTaskLog(entry: TaskLogAppend): Promise<TaskLog> {
   if (!isTauri()) {
-    return {
-      id: "browser-mock-log",
-      run_id: entry.run_id,
-      node_id: entry.node_id ?? null,
-      ts: new Date().toISOString(),
-      agent_name: entry.agent_name ?? null,
-      level: entry.level,
-      message: entry.message,
-    };
+    throw new Error("appendTaskLog requires Tauri runtime");
   }
   return invoke<TaskLog>("append_task_log", { entry });
 }
@@ -232,16 +224,7 @@ export async function updateRunProgress(
   status?: string | null,
 ): Promise<TaskRun> {
   if (!isTauri()) {
-    return {
-      id: runId,
-      goal_id: "",
-      plan_id: "",
-      status: status ?? "running",
-      progress,
-      started_at: null,
-      finished_at: null,
-      error: null,
-    };
+    throw new Error("updateRunProgress requires Tauri runtime");
   }
   return invoke<TaskRun>("update_run_progress", {
     runId,
@@ -287,19 +270,7 @@ export type RevealArtifactResult = {
 
 export async function dispatchPlan(planId: string): Promise<DispatchResult> {
   if (!isTauri()) {
-    return {
-      run: {
-        id: "browser-mock-run",
-        goal_id: "",
-        plan_id: planId,
-        status: "queued",
-        progress: 0,
-        started_at: new Date().toISOString(),
-        finished_at: null,
-        error: null,
-      },
-      nodes: [],
-    };
+    throw new Error("dispatchPlan requires Tauri runtime");
   }
   return invoke<DispatchResult>("dispatch_plan", { planId });
 }
@@ -308,7 +279,9 @@ export async function startRun(
   runId: string,
   concurrency?: number | null,
 ): Promise<StartRunResult> {
-  if (!isTauri()) return { run_id: runId, started: true };
+  if (!isTauri()) {
+    throw new Error("startRun requires Tauri runtime");
+  }
   return invoke<StartRunResult>("start_run", {
     runId,
     concurrency: concurrency ?? null,
@@ -327,25 +300,16 @@ export async function retryNode(
   nodeId: string,
 ): Promise<TaskNode> {
   if (!isTauri()) {
-    return {
-      id: nodeId,
-      run_id: runId,
-      seq: 0,
-      title: "",
-      agent_id: null,
-      skill_ids_json: null,
-      cli_engine: null,
-      model: null,
-      reasoning_effort: null,
-      depends_on_json: null,
-      status: "pending",
-      started_at: null,
-      finished_at: null,
-      artifact_paths_json: null,
-      retry_count: 1,
-    };
+    throw new Error("retryNode requires Tauri runtime");
   }
   return invoke<TaskNode>("retry_node", { runId, nodeId });
+}
+
+export async function retryRun(runId: string): Promise<StartRunResult> {
+  if (!isTauri()) {
+    throw new Error("retryRun requires Tauri runtime");
+  }
+  return invoke<StartRunResult>("retry_run", { runId });
 }
 
 export async function skipNode(
@@ -353,23 +317,7 @@ export async function skipNode(
   nodeId: string,
 ): Promise<TaskNode> {
   if (!isTauri()) {
-    return {
-      id: nodeId,
-      run_id: runId,
-      seq: 0,
-      title: "",
-      agent_id: null,
-      skill_ids_json: null,
-      cli_engine: null,
-      model: null,
-      reasoning_effort: null,
-      depends_on_json: null,
-      status: "skipped",
-      started_at: null,
-      finished_at: null,
-      artifact_paths_json: null,
-      retry_count: 0,
-    };
+    throw new Error("skipNode requires Tauri runtime");
   }
   return invoke<TaskNode>("skip_node", { runId, nodeId });
 }
@@ -379,7 +327,7 @@ export async function readWorkspaceFile(
   relativePath: string,
 ): Promise<WorkspaceFileResult> {
   if (!isTauri()) {
-    return { path: relativePath, content: "(browser mock)" };
+    throw new Error("readWorkspaceFile requires Tauri runtime");
   }
   return invoke<WorkspaceFileResult>("read_workspace_file", {
     agentId,
@@ -392,11 +340,7 @@ export async function revealWorkspaceArtifact(
   relativePath: string,
 ): Promise<RevealArtifactResult> {
   if (!isTauri()) {
-    return {
-      revealed_path: relativePath,
-      existed: false,
-      fallback: true,
-    };
+    throw new Error("revealWorkspaceArtifact requires Tauri runtime");
   }
   return invoke<RevealArtifactResult>("reveal_workspace_artifact", {
     agentId,

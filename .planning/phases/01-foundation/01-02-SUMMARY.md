@@ -1,6 +1,6 @@
 # Phase 1 Plan 02: Router + Shell Interactions Summary
 
-**Typed view router and modal controllers now drive the AgentMind shell; five-page nav and Cmd+K/Import/Skill overlays verified.**
+**Typed view router and modal controllers now drive the AgentFlow shell; five-page nav and Cmd+K/Import/Skill overlays verified.**
 
 ## Accomplishments
 - Added `ViewId` + `showView` / `selectAgent` in `src/ui/router.ts`

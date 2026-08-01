@@ -14,7 +14,7 @@ function escapeHtml(s: string): string {
 function levelClass(level: string): string {
   switch (level) {
     case "error":
-      return "log-warn";
+      return "log-err";
     case "warn":
       return "log-warn";
     case "info":

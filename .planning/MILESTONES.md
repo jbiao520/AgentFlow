@@ -2,7 +2,7 @@
 
 ## v1.0 — 2026-08-01
 
-**Ship:** Personal macOS AgentMind app — five live views, SQLite persistence, CLI sandbox/DAG orchestration, overview topology, Cmd+K polish, release `.app`.
+**Ship:** Personal macOS AgentFlow app — five live views, SQLite persistence, CLI sandbox/DAG orchestration, overview topology, Cmd+K polish, release `.app`.
 
 ### What landed
 - Foundation through Orchestrator (Phases 1–5)
@@ -11,7 +11,7 @@
 - Production `tauri build` + SPEC §10 acceptance record (06-03)
 
 ### Artifacts
-- App: `src-tauri/target/release/bundle/macos/AgentMind.app`
+- App: `src-tauri/target/release/bundle/macos/AgentFlow.app`
 - Acceptance: [ACCEPTANCE.md](phases/06-overview-polish/ACCEPTANCE.md)
 
 ### Out of scope (post-v1)

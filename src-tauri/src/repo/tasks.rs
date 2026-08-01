@@ -29,6 +29,12 @@ pub struct TaskRun {
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
     pub error: Option<String>,
+    pub delivery_report_json: Option<String>,
+    pub schedule_id: Option<String>,
+    pub is_manual: bool,
+    /// Goal prompt used as the human-readable run title in history / UI.
+    #[serde(default)]
+    pub goal_prompt: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,6 +107,10 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRun> {
         started_at: row.get(5)?,
         finished_at: row.get(6)?,
         error: row.get(7)?,
+        delivery_report_json: row.get(8)?,
+        schedule_id: row.get(9)?,
+        is_manual: row.get::<_, i64>(10)? != 0,
+        goal_prompt: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
     })
 }
 
@@ -232,6 +242,16 @@ pub fn update_plan_analysis(
 }
 
 pub fn create_task_run(conn: &Connection, goal_id: &str, plan_id: &str) -> Result<TaskRun, String> {
+    create_task_run_for_schedule(conn, goal_id, plan_id, None, false)
+}
+
+pub fn create_task_run_for_schedule(
+    conn: &Connection,
+    goal_id: &str,
+    plan_id: &str,
+    schedule_id: Option<&str>,
+    is_manual: bool,
+) -> Result<TaskRun, String> {
     let goal_ok: bool = conn
         .query_row("SELECT 1 FROM goals WHERE id = ?1", [goal_id], |_| Ok(true))
         .optional()
@@ -255,9 +275,17 @@ pub fn create_task_run(conn: &Connection, goal_id: &str, plan_id: &str) -> Resul
     let id = Uuid::new_v4().to_string();
     let started_at = now_iso8601();
     conn.execute(
-        "INSERT INTO task_runs (id, goal_id, plan_id, status, progress, started_at, finished_at, error)
-         VALUES (?1, ?2, ?3, 'queued', 0, ?4, NULL, NULL)",
-        params![id, goal_id, plan_id, started_at],
+        "INSERT INTO task_runs (id, goal_id, plan_id, status, progress, started_at, finished_at, error,
+                                delivery_report_json, schedule_id, is_manual)
+         VALUES (?1, ?2, ?3, 'queued', 0, ?4, NULL, NULL, NULL, ?5, ?6)",
+        params![
+            id,
+            goal_id,
+            plan_id,
+            started_at,
+            schedule_id,
+            if is_manual { 1 } else { 0 }
+        ],
     )
     .map_err(|e| e.to_string())?;
     get_task_run(conn, &id)?
@@ -333,8 +361,14 @@ pub fn list_task_runs(conn: &Connection, limit: i64) -> Result<Vec<TaskRun>, Str
     let limit = if limit <= 0 { 50 } else { limit.min(500) };
     let mut stmt = conn
         .prepare(
-            "SELECT id, goal_id, plan_id, status, progress, started_at, finished_at, error
-             FROM task_runs ORDER BY started_at DESC LIMIT ?1",
+            // History only needs the run badge. Keep the potentially large
+            // report for get_task_run, which is loaded for the selected run.
+            "SELECT tr.id, tr.goal_id, tr.plan_id, tr.status, tr.progress, tr.started_at,
+                    tr.finished_at, tr.error, NULL AS delivery_report_json, tr.schedule_id,
+                    tr.is_manual, g.prompt AS goal_prompt
+             FROM task_runs tr
+             LEFT JOIN goals g ON g.id = tr.goal_id
+             ORDER BY tr.started_at DESC LIMIT ?1",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -364,8 +398,12 @@ pub fn clear_task_runs(conn: &Connection) -> Result<u64, String> {
 pub fn get_task_run(conn: &Connection, id: &str) -> Result<Option<TaskRunWithNodes>, String> {
     let run = conn
         .query_row(
-            "SELECT id, goal_id, plan_id, status, progress, started_at, finished_at, error
-             FROM task_runs WHERE id = ?1",
+            "SELECT tr.id, tr.goal_id, tr.plan_id, tr.status, tr.progress, tr.started_at,
+                    tr.finished_at, tr.error, tr.delivery_report_json, tr.schedule_id,
+                    tr.is_manual, g.prompt AS goal_prompt
+             FROM task_runs tr
+             LEFT JOIN goals g ON g.id = tr.goal_id
+             WHERE tr.id = ?1",
             [id],
             map_run,
         )
@@ -421,6 +459,12 @@ pub fn increment_node_retry(conn: &Connection, node_id: &str) -> Result<TaskNode
     conn.execute(
         "UPDATE task_nodes SET retry_count = retry_count + 1,
          status = 'pending', started_at = NULL, finished_at = NULL WHERE id = ?1",
+        [node_id],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE task_runs SET delivery_report_json = NULL
+         WHERE id = (SELECT run_id FROM task_nodes WHERE id = ?1)",
         [node_id],
     )
     .map_err(|e| e.to_string())?;
@@ -605,6 +649,7 @@ pub fn update_run_progress(
             "running" => {
                 conn.execute(
                     "UPDATE task_runs SET progress = ?1, status = ?2,
+                     delivery_report_json = NULL,
                      started_at = COALESCE(started_at, ?3) WHERE id = ?4",
                     params![progress, status, now, run_id],
                 )
@@ -635,6 +680,26 @@ pub fn update_run_progress(
         .ok_or_else(|| format!("task run not found: {run_id}"))
 }
 
+/// Store the generated acceptance report and return the updated run.
+pub fn set_delivery_report(
+    conn: &Connection,
+    run_id: &str,
+    report_json: &str,
+) -> Result<TaskRun, String> {
+    let n = conn
+        .execute(
+            "UPDATE task_runs SET delivery_report_json = ?1 WHERE id = ?2",
+            params![report_json, run_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if n == 0 {
+        return Err(format!("task run not found: {run_id}"));
+    }
+    get_task_run(conn, run_id)?
+        .map(|r| r.run)
+        .ok_or_else(|| format!("task run not found: {run_id}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -655,6 +720,7 @@ mod tests {
         .unwrap();
         let run = create_task_run(&conn, &goal.id, &plan.id).unwrap();
         assert_eq!(run.status, "queued");
+        assert_eq!(run.goal_prompt, "Ship persistence");
 
         let nodes = insert_task_nodes(
             &conn,

@@ -37,23 +37,36 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function avatarGradient(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  const gradients = [
+    "linear-gradient(135deg, rgba(22, 78, 43, 0.18), rgba(5, 150, 105, 0.12))",
+    "linear-gradient(135deg, rgba(2, 132, 199, 0.18), rgba(56, 189, 248, 0.12))",
+    "linear-gradient(135deg, rgba(124, 58, 237, 0.18), rgba(192, 132, 252, 0.12))",
+    "linear-gradient(135deg, rgba(217, 119, 6, 0.18), rgba(251, 191, 36, 0.12))",
+  ];
+  return gradients[Math.abs(hash) % gradients.length];
+}
+
 function renderCard(agent: Agent): string {
   const st = statusLabel(agent.status);
   const desc =
     agent.description?.trim() ||
     "已绑定 Workspace。打开详情可配置模型并同步 Skill。";
   const repo = agent.git_url || agent.workspace_path;
+  const bg = avatarGradient(agent.name);
   return `
     <div class="agent-card" data-agent-id="${escapeHtml(agent.id)}" data-agent-name="${escapeHtml(agent.name)}" data-status="${escapeHtml(agent.status.toLowerCase())}" data-cli="${escapeHtml(agent.default_cli)}" tabindex="0" role="button" aria-label="查看 Agent ${escapeHtml(agent.name)} 详情">
       <div class="agent-card-header">
-        <div class="agent-avatar-badge">${escapeHtml(initials(agent.name))}</div>
+        <div class="agent-avatar-badge" style="background: ${bg}">${escapeHtml(initials(agent.name))}</div>
         <div class="agent-status-badge ${st.badge}">
           <div class="status-dot${st.working ? " working" : ""}"></div>${st.text}
         </div>
       </div>
       <div class="agent-name">${escapeHtml(agent.name)}</div>
       <div class="agent-repo">${escapeHtml(repo)}</div>
-      <p style="font-size:12px; color:var(--fg-muted); margin-bottom:10px; line-height:1.4;">
+      <p style="font-size:12px; color:var(--fg-muted); margin-bottom:12px; line-height:1.45;">
         ${escapeHtml(desc)}
       </p>
       <div class="agent-skills-tags" data-agent-skills="${escapeHtml(agent.id)}"></div>

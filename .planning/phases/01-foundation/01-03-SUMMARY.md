@@ -5,7 +5,7 @@
 ## Accomplishments
 - Rust commands in `commands/system.rs`; registered in `lib.rs`
 - `src/lib/tauri.ts` convention + browser mocks
-- Titlebar badge shows AgentMind version; `__agentmindDebug` for console; IPC hint under CLI widget
+- Titlebar badge shows AgentFlow version; `__agentflowDebug` for console; IPC hint under CLI widget
 - `cargo check` + `npm run build` pass (human visual checkpoint auto-continued per batch mandate)
 
 ## Files Created/Modified

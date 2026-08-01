@@ -5,7 +5,7 @@
 ## Accomplishments
 - Task graph CRUD: create_goal → save_plan → create_task_run → insert_task_nodes → logs/progress/status updates
 - Status enums as TEXT (nodes: pending|running|success|failed|skipped; runs: queued|running|success|failed|cancelled)
-- Tauri commands + `src/lib/api/tasks.ts` browser mocks; `__agentmindDebug` extended
+- Tauri commands + `src/lib/api/tasks.ts` browser mocks; `__agentflowDebug` extended
 - ROADMAP Phase 2 → Complete; INDEX next = 03-01
 
 ## Files Created/Modified

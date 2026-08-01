@@ -16,7 +16,7 @@ pub fn ping() -> String {
 #[tauri::command]
 pub fn app_info() -> AppInfo {
     AppInfo {
-        name: "AgentMind".to_string(),
+        name: "AgentFlow".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         tauri_version: tauri::VERSION.to_string(),
     }

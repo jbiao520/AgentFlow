@@ -30,7 +30,7 @@ function renderSkillRow(skill: Skill): string {
       <div class="skill-info">
         <div class="skill-title">
           <span>${escapeHtml(skillFileName(skill.relative_path))}</span>
-          <span style="font-size:10px; color:var(--accent-primary); background:rgba(37,99,235,0.08); padding:1px 5px; border-radius:3px;">点击预览</span>
+          <span style="font-size:10px; color:var(--accent-primary); background:var(--accent-tint); padding:1px 5px; border-radius:3px;">点击预览</span>
         </div>
         <div class="skill-desc">${escapeHtml(desc)}</div>
       </div>
@@ -51,7 +51,13 @@ async function previewSkill(agentId: string, skill: Skill): Promise<void> {
   const desc = skill.description || "";
   openSkillDetailModal(filename, desc);
   const body = document.getElementById("skill-modal-body");
-  if (body) body.textContent = "加载中…";
+  if (body) {
+    body.innerHTML = `<div style="padding:12px 0; display:flex; flex-direction:column; gap:8px;">
+      <span class="skeleton-line" style="width:85%;"></span>
+      <span class="skeleton-line" style="width:65%;"></span>
+      <span class="skeleton-line" style="width:75%;"></span>
+    </div>`;
+  }
   try {
     const content = await readSkillContent(agentId, skill.relative_path);
     if (body) body.textContent = content;
@@ -107,7 +113,7 @@ export async function refreshAgentSkills(agentId?: string | null): Promise<void>
   if (!list) return;
   if (!id) {
     list.innerHTML =
-      '<div style="font-size:12px; color:var(--fg-muted); padding:8px 0;">请先从 Agents 选择一个 Agent。</div>';
+      '<div style="font-size:12px; color:var(--fg-muted); padding:8px 0;">请先从 Agent 矩阵选择一个 Agent。</div>';
     return;
   }
 

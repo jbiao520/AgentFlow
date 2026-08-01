@@ -661,24 +661,6 @@
       border-color: var(--accent-primary);
     }
 
-    .range-group {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .range-input {
-      flex: 1;
-      accent-color: var(--accent-primary);
-      cursor: pointer;
-    }
-    .range-val {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--fg-secondary);
-      width: 32px;
-      text-align: right;
-    }
-
     .reasoning-pills {
       display: flex;
       gap: 6px;
@@ -1628,25 +1610,6 @@
                 <div class="reasoning-pill active" onclick="setReasoning(this)">Medium</div>
                 <div class="reasoning-pill" onclick="setReasoning(this)">High</div>
               </div>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Temperature (随机温度)</label>
-              <div class="range-group">
-                <input type="range" min="0" max="1" step="0.05" value="0.2" class="range-input" oninput="document.getElementById('temp-val').textContent = this.value" />
-                <span class="range-val" id="temp-val">0.2</span>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
-                <label class="form-label" style="margin-bottom:0;">自动按任务路由</label>
-                <label class="switch">
-                  <input type="checkbox" checked>
-                  <span class="slider"></span>
-                </label>
-              </div>
-              <p style="font-size:11px; color:var(--fg-muted);">遇到复杂 DOM 或验证码时自动提升 Reasoning Effort。</p>
             </div>
 
             <div class="form-group">

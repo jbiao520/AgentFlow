@@ -9,9 +9,10 @@ use crate::repo::{
     Plan, TaskLog, TaskLogAppend, TaskNode, TaskNodeInsert, TaskRun, TaskRunWithNodes,
 };
 use crate::services::dag_runner::{
-    ensure_run_resumable, run_dag_loop, DEFAULT_CONCURRENCY,
+    ensure_run_resumable, resolve_concurrency, run_dag_loop,
 };
 use crate::services::dispatch::{dispatch_plan as svc_dispatch, DispatchResult};
+use crate::services::orchestrate::parse_plan_json;
 use crate::engines::runner::CancelToken;
 use crate::state::{DbState, RunState};
 use serde::{Deserialize, Serialize};
@@ -29,6 +30,17 @@ where
         .lock()
         .map_err(|e| format!("db lock poisoned: {e}"))?;
     f(&conn)
+}
+
+fn plan_concurrency_for_run(
+    conn: &rusqlite::Connection,
+    run_id: &str,
+) -> Result<Option<usize>, String> {
+    let full = repo_get_run(conn, run_id)?.ok_or_else(|| format!("run not found: {run_id}"))?;
+    let plan = crate::repo::get_plan(conn, &full.run.plan_id)?
+        .ok_or_else(|| format!("plan not found: {}", full.run.plan_id))?;
+    let analysis = parse_plan_json(&plan.analysis_json).ok();
+    Ok(analysis.and_then(|a| a.concurrency))
 }
 
 #[tauri::command]
@@ -204,10 +216,18 @@ pub fn start_run(
         }
     }
 
+    let conc = {
+        let conn = state
+            .conn
+            .lock()
+            .map_err(|e| format!("db lock poisoned: {e}"))?;
+        let plan_conc = plan_concurrency_for_run(&conn, &run_id)?;
+        resolve_concurrency(concurrency, plan_conc)
+    };
+
     let db = state.conn_arc();
     let app2 = app.clone();
     let run_id2 = run_id.clone();
-    let conc = concurrency.unwrap_or(DEFAULT_CONCURRENCY);
     let cancels2 = Arc::clone(&cancels);
 
     thread::spawn(move || {
@@ -307,6 +327,49 @@ pub fn retry_node(
     Ok(node)
 }
 
+/// Retry every failed node in a run. This is the action exposed by failure notifications.
+#[tauri::command]
+pub fn retry_run(
+    app: AppHandle,
+    state: State<'_, DbState>,
+    runs: State<'_, RunState>,
+    run_id: String,
+) -> Result<StartRunResult, String> {
+    {
+        let conn = state
+            .conn
+            .lock()
+            .map_err(|e| format!("db lock poisoned: {e}"))?;
+        let full = repo_get_run(&conn, &run_id)?
+            .ok_or_else(|| format!("run not found: {run_id}"))?;
+        let failed: Vec<String> = full
+            .nodes
+            .iter()
+            .filter(|node| node.status == "failed")
+            .map(|node| node.id.clone())
+            .collect();
+        if failed.is_empty() {
+            return Err("run has no failed nodes to retry".into());
+        }
+        for node_id in failed {
+            increment_node_retry(&conn, &node_id)?;
+        }
+        ensure_run_resumable(&conn, &run_id)?;
+    }
+
+    let active = {
+        let map = runs
+            .cancels
+            .lock()
+            .map_err(|e| format!("run state lock poisoned: {e}"))?;
+        map.contains_key(&run_id)
+    };
+    if active {
+        return Err("run is already active".into());
+    }
+    start_run(app, state, runs, run_id, None)
+}
+
 #[tauri::command]
 pub fn skip_node(
     app: AppHandle,
@@ -401,7 +464,7 @@ fn agent_workspace(state: &State<'_, DbState>, agent_id: &str) -> Result<PathBuf
         .lock()
         .map_err(|e| format!("db lock poisoned: {e}"))?;
     let agent = crate::repo::get_agent(&conn, agent_id)?
-        .ok_or_else(|| format!("agent not found: {agent_id}"))?;
+        .ok_or_else(|| format!("agent not found: {agent_id}（可能已被删除，无法读取产物）"))?;
     PathBuf::from(&agent.workspace_path)
         .canonicalize()
         .map_err(|e| format!("workspace not accessible: {e}"))

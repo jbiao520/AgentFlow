@@ -1,4 +1,4 @@
-# AgentMind 产品开发规格（v1.0）
+# AgentFlow 产品开发规格（v1.0）
 
 > 本文件是开发用产品规格：定义「做什么 / 怎么构成 / 如何验收」。
 > 执行节奏以 `.planning/ROADMAP.md` 与各 phase 的 `PLAN.md` 为准。
@@ -6,7 +6,7 @@
 
 ## 1. 产品定位
 
-**AgentMind** 是安装在 macOS 上的本地 App，定位为用户的「个人 AI 大脑与执行系统」。
+**AgentFlow** 是安装在 macOS 上的本地 App，定位为用户的「个人 AI 大脑与执行系统」。
 
 - **大脑**：调度中枢理解目标，选择 Agent / Skill / 模型与 reasoning
 - **执行**：在绑定的代码仓库工作区里，通过 CLI（cursor-agent / codex / opencode）落地任务
@@ -154,7 +154,7 @@ templates  -- 可复用执行模版（参数化 Goal + Plan）
   goal_prompt, plan_json, variables_json, created_at, updated_at
 ```
 
-说明：日志量大时可按 Run 分文件落盘（`~/Library/Application Support/AgentMind/logs/{run_id}.jsonl`），SQLite 只存索引与摘要。
+说明：日志量大时可按 Run 分文件落盘（`~/Library/Application Support/AgentFlow/logs/{run_id}.jsonl`），SQLite 只存索引与摘要。
 
 ## 7. 技术架构
 

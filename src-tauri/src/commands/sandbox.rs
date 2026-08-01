@@ -110,7 +110,7 @@ pub async fn sandbox_run(
                 line: ev.line,
             };
             let _ = app_for_log.emit("sandbox-log", payload);
-        })
+        }, None)
     })
     .await
     .map_err(|e| format!("sandbox join error: {e}"))?;

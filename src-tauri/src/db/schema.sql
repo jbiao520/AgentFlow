@@ -1,4 +1,6 @@
--- AgentMind schema v3 (SPEC §6 + templates + schedules)
+-- AgentFlow schema v7 (SPEC §6 + templates + schedules)
+-- v6: schedule expressions, execution windows, overlap policy and retries.
+-- v7: task_runs.is_manual distinguishes ticker fires from manual run-now.
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY
@@ -13,7 +15,8 @@ CREATE TABLE IF NOT EXISTS agents (
   default_cli TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'idle',
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS agent_model_profiles (
@@ -67,7 +70,10 @@ CREATE TABLE IF NOT EXISTS task_runs (
   progress REAL NOT NULL DEFAULT 0,
   started_at TEXT,
   finished_at TEXT,
-  error TEXT
+  error TEXT,
+  delivery_report_json TEXT,
+  schedule_id TEXT REFERENCES schedules(id) ON DELETE SET NULL,
+  is_manual INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS task_nodes (
@@ -133,8 +139,39 @@ CREATE TABLE IF NOT EXISTS schedules (
   last_error TEXT,
   run_count INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  cron_expr TEXT,
+  window_start TEXT,
+  window_end TEXT,
+  overlap_policy TEXT NOT NULL DEFAULT 'queue',
+  max_retries INTEGER NOT NULL DEFAULT 0,
+  retry_delay_secs INTEGER NOT NULL DEFAULT 300,
+  retry_attempt INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_schedules_due
   ON schedules(enabled, next_run_at);
+
+-- idx_task_runs_schedule_active is created in migrate_v6 after schedule_id
+-- is ensured (CREATE TABLE IF NOT EXISTS does not add columns on upgrades).
+
+-- Per-execution token usage captured from CLI JSONL streams (codex/opencode).
+CREATE TABLE IF NOT EXISTS node_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL REFERENCES task_runs(id) ON DELETE CASCADE,
+  node_id TEXT NOT NULL REFERENCES task_nodes(id) ON DELETE CASCADE,
+  engine TEXT NOT NULL,
+  provider TEXT,
+  model TEXT,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+  cost REAL,
+  estimated INTEGER NOT NULL DEFAULT 0,
+  recorded_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_node_usage_run
+  ON node_usage(run_id);

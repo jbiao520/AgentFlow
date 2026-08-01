@@ -1,18 +1,19 @@
+import "highlight.js/styles/github-dark.min.css";
 import shellHtml from "./ui/app-shell.html?raw";
 import { initDetailConfig } from "./ui/agents/detail-config";
 import { initDetailSkills } from "./ui/agents/detail-skills";
 import { initAgentMatrix } from "./ui/agents/matrix";
 import { initSandbox } from "./ui/agents/sandbox";
 import { initAppInfo } from "./ui/app-info";
-import { initCliWidget } from "./ui/cli-widget";
 import { initDemoActions } from "./ui/demo-actions";
 import { bindModals } from "./ui/modals";
 import { bindNav } from "./ui/nav";
-import { initOrchestratorSettings } from "./ui/orchestrator/settings";
 import { initOrchestratorWorkbench } from "./ui/orchestrator/workbench";
 import { initOverview } from "./ui/overview/page";
 import { initAgentDetailNav } from "./ui/router";
 import { initSchedules } from "./ui/schedules/page";
+import { initNotifications } from "./ui/notifications";
+import { initSettings } from "./ui/settings/page";
 import { initTaskCenter } from "./ui/tasks/center";
 import { initTemplateLibrary } from "./ui/templates/page";
 import { initSaveTemplateWizard } from "./ui/templates/save-wizard";
@@ -32,13 +33,13 @@ function mountApp(): void {
   initDetailSkills();
   initDetailConfig();
   initSandbox();
-  initCliWidget();
-  initOrchestratorSettings();
+  initSettings();
   initOrchestratorWorkbench();
   initTaskCenter();
   initTemplateLibrary();
   initSaveTemplateWizard();
   initSchedules();
+  initNotifications();
   void initAppInfo();
 }
 
