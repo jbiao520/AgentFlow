@@ -160,6 +160,20 @@ export async function getTaskRun(
   return invoke<TaskRunWithNodes | null>("get_task_run", { id });
 }
 
+export async function deleteTaskRun(runId: string): Promise<void> {
+  if (!isTauri()) {
+    throw new Error("deleteTaskRun requires Tauri runtime");
+  }
+  await invoke("delete_task_run", { runId });
+}
+
+export async function clearTaskRuns(): Promise<number> {
+  if (!isTauri()) {
+    throw new Error("clearTaskRuns requires Tauri runtime");
+  }
+  return invoke<number>("clear_task_runs");
+}
+
 export async function updateNodeStatus(
   nodeId: string,
   status: string,
@@ -265,6 +279,12 @@ export type WorkspaceFileResult = {
   content: string;
 };
 
+export type RevealArtifactResult = {
+  revealed_path: string;
+  existed: boolean;
+  fallback: boolean;
+};
+
 export async function dispatchPlan(planId: string): Promise<DispatchResult> {
   if (!isTauri()) {
     return {
@@ -296,7 +316,9 @@ export async function startRun(
 }
 
 export async function cancelRun(runId: string): Promise<void> {
-  if (!isTauri()) return;
+  if (!isTauri()) {
+    throw new Error("cancelRun requires Tauri runtime");
+  }
   await invoke("cancel_run", { runId });
 }
 
@@ -360,6 +382,23 @@ export async function readWorkspaceFile(
     return { path: relativePath, content: "(browser mock)" };
   }
   return invoke<WorkspaceFileResult>("read_workspace_file", {
+    agentId,
+    relativePath,
+  });
+}
+
+export async function revealWorkspaceArtifact(
+  agentId: string,
+  relativePath: string,
+): Promise<RevealArtifactResult> {
+  if (!isTauri()) {
+    return {
+      revealed_path: relativePath,
+      existed: false,
+      fallback: true,
+    };
+  }
+  return invoke<RevealArtifactResult>("reveal_workspace_artifact", {
     agentId,
     relativePath,
   });

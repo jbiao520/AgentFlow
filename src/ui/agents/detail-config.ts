@@ -5,45 +5,24 @@ import {
   upsertAgent,
   upsertAgentProfile,
 } from "../../lib/api/agents";
-import { findCachedAgent, getSelectedAgentId, setCachedAgents } from "./state";
+import {
+  bindModelCatalogPanel,
+  selectedEffort,
+} from "../cli-models";
 import { showToast } from "../toast";
+import { findCachedAgent, getSelectedAgentId, setCachedAgents } from "./state";
 
 function el<T extends HTMLElement>(id: string): T | null {
   return document.getElementById(id) as T | null;
 }
 
-function parseEngineOptions(json: string | null | undefined): {
-  playwright_mode: string;
-} {
-  try {
-    if (json) {
-      const obj = JSON.parse(json) as { playwright_mode?: string };
-      if (obj.playwright_mode === "headed" || obj.playwright_mode === "headless") {
-        return { playwright_mode: obj.playwright_mode };
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  return { playwright_mode: "headless" };
-}
-
-function selectedReasoning(): string {
-  const active = document.querySelector(
-    "#detail-reasoning-pills .reasoning-pill.active",
-  );
-  return (active?.getAttribute("data-reasoning") || "medium").toLowerCase();
-}
-
-function setReasoningActive(effort: string): void {
-  const target = effort.toLowerCase();
-  document
-    .querySelectorAll("#detail-reasoning-pills .reasoning-pill")
-    .forEach((p) => {
-      const v = (p.getAttribute("data-reasoning") || "").toLowerCase();
-      p.classList.toggle("active", v === target);
-    });
-}
+let reloadCatalog:
+  | ((preferred?: {
+      model?: string;
+      effort?: string;
+      keepUnavailable?: boolean;
+    }) => Promise<void>)
+  | null = null;
 
 export function applyProfileToForm(
   agent: Agent,
@@ -51,20 +30,6 @@ export function applyProfileToForm(
 ): void {
   const cli = el<HTMLSelectElement>("detail-cli-select");
   if (cli) cli.value = agent.default_cli || "codex";
-
-  const model = el<HTMLSelectElement>("detail-model-select");
-  if (model) {
-    const preferred = profile?.preferred_model || "claude-3.7-sonnet";
-    if (![...model.options].some((o) => o.value === preferred)) {
-      const opt = document.createElement("option");
-      opt.value = preferred;
-      opt.textContent = preferred;
-      model.appendChild(opt);
-    }
-    model.value = preferred;
-  }
-
-  setReasoningActive(profile?.reasoning_effort || "medium");
 
   const temp = el<HTMLInputElement>("detail-temperature");
   const tempVal = el<HTMLElement>("temp-val");
@@ -74,11 +39,6 @@ export function applyProfileToForm(
 
   const auto = el<HTMLInputElement>("detail-auto-route");
   if (auto) auto.checked = profile?.auto_route ?? true;
-
-  const pw = el<HTMLSelectElement>("detail-playwright-mode");
-  if (pw) {
-    pw.value = parseEngineOptions(profile?.engine_options_json).playwright_mode;
-  }
 
   const desc = el<HTMLInputElement>("detail-agent-description");
   if (desc) desc.value = agent.description || "";
@@ -114,7 +74,16 @@ export async function loadAgentDetailConfig(
       `加载配置失败: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
+
   applyProfileToForm(agent, profile);
+
+  if (reloadCatalog) {
+    await reloadCatalog({
+      model: profile?.preferred_model || "",
+      effort: profile?.reasoning_effort || "",
+      keepUnavailable: true,
+    });
+  }
 }
 
 export async function saveAgentDetailConfig(): Promise<void> {
@@ -140,19 +109,21 @@ export async function saveAgentDetailConfig(): Promise<void> {
     agent.default_cli;
   const model =
     el<HTMLSelectElement>("detail-model-select")?.value.trim() || null;
-  const reasoning = selectedReasoning();
+  const pills = el<HTMLElement>("detail-reasoning-pills");
+  const reasoning = pills ? selectedEffort(pills) : "";
   const temperature = parseFloat(
     el<HTMLInputElement>("detail-temperature")?.value || "0.2",
   );
   const autoRoute = el<HTMLInputElement>("detail-auto-route")?.checked ?? true;
-  const playwright =
-    el<HTMLSelectElement>("detail-playwright-mode")?.value || "headless";
   const description =
     el<HTMLInputElement>("detail-agent-description")?.value.trim() || null;
 
-  const engine_options_json = JSON.stringify({
-    playwright_mode: playwright,
-  });
+  if (!model) {
+    showToast("请先选择可用模型");
+    return;
+  }
+
+  const engine_options_json = "{}";
 
   try {
     await upsertAgentProfile({
@@ -174,7 +145,6 @@ export async function saveAgentDetailConfig(): Promise<void> {
       status: agent.status,
     });
 
-    // refresh cache entry
     const list = await listAgents();
     setCachedAgents(list);
     applyProfileToForm(updated, {
@@ -186,6 +156,14 @@ export async function saveAgentDetailConfig(): Promise<void> {
       engine_options_json,
     });
 
+    if (reloadCatalog) {
+      await reloadCatalog({
+        model,
+        effort: reasoning,
+        keepUnavailable: true,
+      });
+    }
+
     showToast("Agent 参数与模型路由配置已保存");
   } catch (e) {
     showToast(`保存失败: ${e instanceof Error ? e.message : String(e)}`);
@@ -193,22 +171,26 @@ export async function saveAgentDetailConfig(): Promise<void> {
 }
 
 export function initDetailConfig(): void {
+  const cli = el<HTMLSelectElement>("detail-cli-select");
+  const model = el<HTMLSelectElement>("detail-model-select");
+  const pills = el<HTMLElement>("detail-reasoning-pills");
+
+  if (cli && model && pills) {
+    reloadCatalog = bindModelCatalogPanel({
+      cliSelect: cli,
+      modelSelect: model,
+      pills,
+      getPreferred: () => ({
+        model: model.value.trim(),
+        effort: selectedEffort(pills),
+      }),
+    });
+  }
+
   document
     .getElementById("btn-save-agent-config")
     ?.addEventListener("click", () => {
       void saveAgentDetailConfig();
-    });
-
-  document
-    .querySelectorAll("#detail-reasoning-pills .reasoning-pill")
-    .forEach((pill) => {
-      pill.addEventListener("click", () => {
-        document
-          .querySelectorAll("#detail-reasoning-pills .reasoning-pill")
-          .forEach((p) => p.classList.remove("active"));
-        pill.classList.add("active");
-        showToast(`推理深度已更新为: ${pill.textContent}`);
-      });
     });
 
   const temp = el<HTMLInputElement>("detail-temperature");

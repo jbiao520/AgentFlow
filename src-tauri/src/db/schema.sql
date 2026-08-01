@@ -1,4 +1,4 @@
--- AgentMind schema v1 (SPEC §6)
+-- AgentMind schema v3 (SPEC §6 + templates + schedules)
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY
@@ -104,3 +104,37 @@ CREATE TABLE IF NOT EXISTS cli_engine_status (
   version TEXT,
   last_checked_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  source_goal_id TEXT,
+  source_plan_id TEXT,
+  source_run_id TEXT,
+  goal_prompt TEXT NOT NULL,
+  plan_json TEXT NOT NULL,
+  variables_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS schedules (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  template_id TEXT NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+  values_json TEXT NOT NULL DEFAULT '{}',
+  mode TEXT NOT NULL,
+  interval_secs INTEGER,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  next_run_at TEXT NOT NULL,
+  last_run_at TEXT,
+  last_run_id TEXT,
+  last_error TEXT,
+  run_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_schedules_due
+  ON schedules(enabled, next_run_at);

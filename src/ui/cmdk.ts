@@ -38,10 +38,12 @@ function navAction(view: ViewId, label: string): CmdKAction {
 
 async function buildActions(): Promise<CmdKAction[]> {
   const actions: CmdKAction[] = [
-    navAction("overview", "跳转至 全局总览"),
-    navAction("agents", "跳转至 Agent 矩阵"),
+    navAction("overview", "跳转至 Dashboard"),
+    navAction("agents", "跳转至 Agents"),
     navAction("commander", "打开 调度中枢"),
     navAction("tasks", "查看 任务中心"),
+    navAction("templates", "打开 模版库"),
+    navAction("schedules", "打开 Schedules 定时任务"),
     {
       id: "action-probe-cli",
       label: "Probe CLIs — 探测本机 CLI 引擎",

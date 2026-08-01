@@ -1,6 +1,13 @@
+pub mod cli_models;
 pub mod cli_probe;
 pub mod dag_runner;
 pub mod dispatch;
+pub mod handoff;
 pub mod import_agent;
 pub mod orchestrate;
+pub mod recovery;
+pub mod scheduler;
 pub mod skill_scan;
+pub mod template_polish;
+pub mod template_run;
+pub mod template_vars;

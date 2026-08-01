@@ -13,7 +13,8 @@
       "cli_engine": "codex",
       "model": "sol",
       "reasoning_effort": "low",
-      "prompt": "Write notes.md with three bullet findings."
+      "prompt": "Write notes.md with three bullet findings.",
+      "artifact_paths": ["notes.md"]
     },
     {
       "id": "t2",
@@ -24,7 +25,8 @@
       "cli_engine": "codex",
       "model": "sol",
       "reasoning_effort": "medium",
-      "prompt": "Read notes.md and write summary.md."
+      "prompt": "Read the handoff input from the previous step and write summary.md.",
+      "artifact_paths": ["summary.md"]
     }
   ]
 }

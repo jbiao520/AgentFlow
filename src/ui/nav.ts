@@ -3,9 +3,10 @@ import { isViewId, showView, type ViewId } from "./router";
 const NAV_TO_VIEW: Record<string, ViewId> = {
   "nav-overview": "overview",
   "nav-agents": "agents",
-  "nav-agent-detail": "agent-detail",
   "nav-commander": "commander",
   "nav-tasks": "tasks",
+  "nav-templates": "templates",
+  "nav-schedules": "schedules",
 };
 
 /** Bind sidebar nav items (data-view preferred, data-od-id fallback). */

@@ -1,7 +1,8 @@
 //! Task domain IPC — persistence + dispatch / DAG runner / interventions.
 use crate::repo::{
-    append_task_log as repo_append_log, create_goal as repo_create_goal,
-    create_task_run as repo_create_run, get_task_node, get_task_run as repo_get_run,
+    append_task_log as repo_append_log, clear_task_runs as repo_clear_runs,
+    create_goal as repo_create_goal, create_task_run as repo_create_run,
+    delete_task_run as repo_delete_run, get_task_node, get_task_run as repo_get_run,
     increment_node_retry, insert_task_nodes as repo_insert_nodes, list_task_logs as repo_list_logs,
     list_task_runs as repo_list_runs, save_plan as repo_save_plan,
     update_node_status as repo_update_node, update_run_progress as repo_update_progress, Goal,
@@ -79,6 +80,46 @@ pub fn get_task_run(
     id: String,
 ) -> Result<Option<TaskRunWithNodes>, String> {
     with_db(&state, |c| repo_get_run(c, &id))
+}
+
+#[tauri::command]
+pub fn delete_task_run(
+    state: State<'_, DbState>,
+    runs: State<'_, RunState>,
+    run_id: String,
+) -> Result<(), String> {
+    {
+        let mut map = runs
+            .cancels
+            .lock()
+            .map_err(|e| format!("run state lock poisoned: {e}"))?;
+        if let Some(token) = map.remove(&run_id) {
+            token.cancel();
+        }
+    }
+    with_db(&state, |c| {
+        if !repo_delete_run(c, &run_id)? {
+            return Err(format!("run not found: {run_id}"));
+        }
+        Ok(())
+    })
+}
+
+#[tauri::command]
+pub fn clear_task_runs(
+    state: State<'_, DbState>,
+    runs: State<'_, RunState>,
+) -> Result<u64, String> {
+    {
+        let mut map = runs
+            .cancels
+            .lock()
+            .map_err(|e| format!("run state lock poisoned: {e}"))?;
+        for (_, token) in map.drain() {
+            token.cancel();
+        }
+    }
+    with_db(&state, |c| repo_clear_runs(c))
 }
 
 #[tauri::command]
@@ -183,16 +224,43 @@ pub fn start_run(
 }
 
 #[tauri::command]
-pub fn cancel_run(runs: State<'_, RunState>, run_id: String) -> Result<(), String> {
-    let map = runs
-        .cancels
-        .lock()
-        .map_err(|e| format!("run state lock poisoned: {e}"))?;
-    if let Some(token) = map.get(&run_id) {
-        token.cancel();
+pub fn cancel_run(
+    state: State<'_, DbState>,
+    runs: State<'_, RunState>,
+    run_id: String,
+) -> Result<(), String> {
+    let had_runner = {
+        let map = runs
+            .cancels
+            .lock()
+            .map_err(|e| format!("run state lock poisoned: {e}"))?;
+        if let Some(token) = map.get(&run_id) {
+            token.cancel();
+            true
+        } else {
+            false
+        }
+    };
+
+    if had_runner {
+        // DAG loop will settle nodes and mark cancelled.
         Ok(())
     } else {
-        Err(format!("no active runner for run: {run_id}"))
+        // No in-memory runner (orphaned / already finished) — settle DB directly.
+        with_db(&state, |c| {
+            let full = repo_get_run(c, &run_id)?.ok_or_else(|| format!("run not found: {run_id}"))?;
+            if matches!(
+                full.run.status.as_str(),
+                "success" | "failed" | "cancelled"
+            ) {
+                return Err(format!("run already finished: {}", full.run.status));
+            }
+            crate::services::recovery::finalize_interrupted_run(
+                c,
+                &run_id,
+                "run cancelled by user (no active runner)",
+            )
+        })
     }
 }
 
@@ -260,6 +328,12 @@ pub fn skip_node(
         if matches!(node.status.as_str(), "success" | "skipped") {
             return Err(format!("cannot skip node in status {}", node.status));
         }
+        if node.status == "running" {
+            return Err(
+                "cannot skip a running node — cancel the run first, or wait for it to finish"
+                    .into(),
+            );
+        }
         let node = repo_update_node(&conn, &node_id, "skipped")?;
         ensure_run_resumable(&conn, &run_id)?;
         if let Ok(Some(full)) = repo_get_run(&conn, &run_id) {
@@ -294,14 +368,18 @@ pub struct WorkspaceFileResult {
     pub content: String,
 }
 
-/// Read a text file under the agent's workspace (path traversal safe).
-#[tauri::command]
-pub fn read_workspace_file(
-    state: State<'_, DbState>,
-    agent_id: String,
-    relative_path: String,
-) -> Result<WorkspaceFileResult, String> {
-    let rel = relative_path.trim();
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RevealArtifactResult {
+    /// Absolute path that was revealed in Finder.
+    pub revealed_path: String,
+    /// True when the requested relative file existed.
+    pub existed: bool,
+    /// True when a parent/workspace fallback was revealed instead of the file.
+    pub fallback: bool,
+}
+
+fn validate_relative_path(rel: &str) -> Result<&Path, String> {
+    let rel = rel.trim();
     if rel.is_empty() {
         return Err("relative_path must not be empty".into());
     }
@@ -314,17 +392,84 @@ pub fn read_workspace_file(
             return Err("path must not contain ..".into());
         }
     }
+    Ok(path)
+}
 
+fn agent_workspace(state: &State<'_, DbState>, agent_id: &str) -> Result<PathBuf, String> {
     let conn = state
         .conn
         .lock()
         .map_err(|e| format!("db lock poisoned: {e}"))?;
-    let agent = crate::repo::get_agent(&conn, &agent_id)?
+    let agent = crate::repo::get_agent(&conn, agent_id)?
         .ok_or_else(|| format!("agent not found: {agent_id}"))?;
-    let ws = PathBuf::from(&agent.workspace_path)
+    PathBuf::from(&agent.workspace_path)
         .canonicalize()
-        .map_err(|e| format!("workspace not accessible: {e}"))?;
-    let full = ws.join(rel);
+        .map_err(|e| format!("workspace not accessible: {e}"))
+}
+
+/// Pick a Finder reveal target: the file if present, else nearest existing parent under workspace.
+pub fn resolve_reveal_target(ws: &Path, relative: &Path) -> (PathBuf, bool, bool) {
+    let candidate = ws.join(relative);
+    if candidate.exists() {
+        if let Ok(canon) = candidate.canonicalize() {
+            if canon.starts_with(ws) {
+                return (canon, true, false);
+            }
+        }
+    }
+
+    let mut cur = candidate.parent().map(|p| p.to_path_buf());
+    while let Some(p) = cur {
+        if p.starts_with(ws) {
+            if p.exists() {
+                if let Ok(canon) = p.canonicalize() {
+                    if canon.starts_with(ws) {
+                        return (canon, false, true);
+                    }
+                }
+                return (p, false, true);
+            }
+            if p == *ws {
+                break;
+            }
+        } else {
+            break;
+        }
+        cur = p.parent().map(|p| p.to_path_buf());
+    }
+    (ws.to_path_buf(), false, true)
+}
+
+fn reveal_path_macos(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Err(format!("path does not exist: {}", path.display()));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-R", &path.to_string_lossy()])
+            .status()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        Err("reveal_in_finder is only supported on macOS in v1".to_string())
+    }
+}
+
+/// Read a text file under the agent's workspace (path traversal safe).
+#[tauri::command]
+pub fn read_workspace_file(
+    state: State<'_, DbState>,
+    agent_id: String,
+    relative_path: String,
+) -> Result<WorkspaceFileResult, String> {
+    let rel_path = validate_relative_path(&relative_path)?;
+    let rel = relative_path.trim();
+    let ws = agent_workspace(&state, &agent_id)?;
+    let full = ws.join(rel_path);
     let canon = full
         .canonicalize()
         .map_err(|e| format!("file not found: {e}"))?;
@@ -346,4 +491,70 @@ pub fn read_workspace_file(
         path: rel.to_string(),
         content,
     })
+}
+
+/// Reveal an artifact path in Finder. Falls back to parent/workspace if the file is missing.
+#[tauri::command]
+pub fn reveal_workspace_artifact(
+    state: State<'_, DbState>,
+    agent_id: String,
+    relative_path: String,
+) -> Result<RevealArtifactResult, String> {
+    let rel_path = validate_relative_path(&relative_path)?;
+    let ws = agent_workspace(&state, &agent_id)?;
+    let (target, existed, fallback) = resolve_reveal_target(&ws, rel_path);
+    reveal_path_macos(&target)?;
+    Ok(RevealArtifactResult {
+        revealed_path: target.to_string_lossy().to_string(),
+        existed,
+        fallback,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn reveal_target_prefers_existing_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ws = tmp.path().canonicalize().unwrap();
+        let arts = ws.join("artifacts");
+        fs::create_dir_all(&arts).unwrap();
+        let file = arts.join("out.md");
+        fs::write(&file, "hi").unwrap();
+
+        let (target, existed, fallback) =
+            resolve_reveal_target(&ws, Path::new("artifacts/out.md"));
+        assert!(existed);
+        assert!(!fallback);
+        assert_eq!(target, file.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn reveal_target_falls_back_to_parent_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ws = tmp.path().canonicalize().unwrap();
+        let arts = ws.join("artifacts");
+        fs::create_dir_all(&arts).unwrap();
+
+        let (target, existed, fallback) =
+            resolve_reveal_target(&ws, Path::new("artifacts/missing.md"));
+        assert!(!existed);
+        assert!(fallback);
+        assert_eq!(target, arts.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn reveal_target_falls_back_to_workspace() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ws = tmp.path().canonicalize().unwrap();
+
+        let (target, existed, fallback) =
+            resolve_reveal_target(&ws, Path::new("artifacts/missing.md"));
+        assert!(!existed);
+        assert!(fallback);
+        assert_eq!(target, ws);
+    }
 }

@@ -27,7 +27,7 @@ pub struct SandboxLogPayload {
 }
 
 #[tauri::command]
-pub fn sandbox_run(
+pub async fn sandbox_run(
     app: AppHandle,
     db: State<'_, DbState>,
     sandbox: State<'_, SandboxState>,
@@ -85,6 +85,7 @@ pub fn sandbox_run(
             reasoning,
             extra_args: vec![],
             env: HashMap::new(),
+            stream_output: true,
         }
     }; // DB lock released before long-running spawn
 
@@ -101,14 +102,18 @@ pub fn sandbox_run(
     }
 
     let app_for_log = app.clone();
-    let result = run_engine_unchecked(&req, &cancel, |ev: LogEvent| {
-        let payload = SandboxLogPayload {
-            ts: ev.ts,
-            stream: ev.stream,
-            line: ev.line,
-        };
-        let _ = app_for_log.emit("sandbox-log", payload);
-    });
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        run_engine_unchecked(&req, &cancel, None, |ev: LogEvent| {
+            let payload = SandboxLogPayload {
+                ts: ev.ts,
+                stream: ev.stream,
+                line: ev.line,
+            };
+            let _ = app_for_log.emit("sandbox-log", payload);
+        })
+    })
+    .await
+    .map_err(|e| format!("sandbox join error: {e}"))?;
 
     {
         let mut slot = sandbox

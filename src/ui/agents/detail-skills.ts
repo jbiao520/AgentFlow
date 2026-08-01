@@ -107,7 +107,7 @@ export async function refreshAgentSkills(agentId?: string | null): Promise<void>
   if (!list) return;
   if (!id) {
     list.innerHTML =
-      '<div style="font-size:12px; color:var(--fg-muted); padding:8px 0;">请先从 Agent 矩阵选择一个 Agent。</div>';
+      '<div style="font-size:12px; color:var(--fg-muted); padding:8px 0;">请先从 Agents 选择一个 Agent。</div>';
     return;
   }
 

@@ -4,11 +4,15 @@ import {
   type EngineStatus,
 } from "../lib/api/cli";
 
+const ENGINE_ORDER = ["cursor-agent", "codex", "opencode"] as const;
+
 const ENGINE_LABELS: Record<string, string> = {
-  "cursor-agent": "cursor-agent",
+  "cursor-agent": "cursor",
   codex: "codex",
   opencode: "opencode",
 };
+
+let probing = false;
 
 function escapeHtml(s: string): string {
   return s
@@ -18,57 +22,87 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function renderStatuses(statuses: EngineStatus[]): void {
-  const activeEl = document.getElementById("cli-active-count");
+/** Always render the three engines in fixed order. */
+function normalizeStatuses(statuses: EngineStatus[]): EngineStatus[] {
+  const byEngine = new Map(statuses.map((s) => [s.engine, s]));
+  return ENGINE_ORDER.map(
+    (engine) =>
+      byEngine.get(engine) ?? {
+        engine,
+        available: false,
+        version: null,
+        last_checked_at: null,
+      },
+  );
+}
+
+function renderStatuses(statuses: EngineStatus[], loading = false): void {
   const listEl = document.getElementById("cli-engine-list");
-  if (!activeEl || !listEl) return;
+  const widget = document.querySelector(".cli-engine-widget");
+  if (!listEl) return;
 
-  const active = statuses.filter((s) => s.available).length;
-  const total = Math.max(statuses.length, 3);
-  activeEl.textContent = `${active}/${total} Active`;
-  activeEl.style.color =
-    active === total
-      ? "var(--accent-emerald)"
-      : active === 0
-        ? "var(--accent-rose)"
-        : "var(--accent-amber)";
+  widget?.classList.toggle("is-probing", loading);
 
-  listEl.innerHTML = statuses
+  listEl.innerHTML = normalizeStatuses(statuses)
     .map((s) => {
       const label = ENGINE_LABELS[s.engine] ?? s.engine;
-      const dotClass = s.available ? "status-dot" : "status-dot offline";
-      const meta = s.available
-        ? escapeHtml(s.version ?? "ok")
-        : "unavailable";
-      return `<div class="cli-item" data-engine="${escapeHtml(s.engine)}">
+      let dotClass = "status-dot offline";
+      if (loading) dotClass = "status-dot working";
+      else if (s.available) dotClass = "status-dot";
+      const tip = loading
+        ? "probing…"
+        : s.available
+          ? s.version
+            ? `${label} · ${s.version}`
+            : label
+          : `${label} · unavailable`;
+      return `<div class="cli-item" data-engine="${escapeHtml(s.engine)}" title="${escapeHtml(tip)}">
           <div class="cli-name"><div class="${dotClass}"></div>${escapeHtml(label)}</div>
-          <span style="font-size:10px; color:var(--fg-muted); font-family:var(--font-mono);">${meta}</span>
         </div>`;
     })
     .join("");
 }
 
 export async function refreshCliWidget(forceProbe = false): Promise<void> {
+  if (forceProbe && probing) return;
+  const listEl = document.getElementById("cli-engine-list");
+  if (!listEl) return;
+
+  if (forceProbe) {
+    probing = true;
+    // Keep current labels; pulse dots so click is visibly doing work.
+    const current = Array.from(listEl.querySelectorAll(".cli-item")).map(
+      (el) =>
+        ({
+          engine: el.getAttribute("data-engine") || "",
+          available: !el.querySelector(".status-dot.offline"),
+          version: null,
+          last_checked_at: null,
+        }) satisfies EngineStatus,
+    );
+    renderStatuses(current.length ? current : [], true);
+  }
+
   try {
     const statuses = forceProbe
       ? await probeCliEngines()
       : await listCliEngineStatus();
-    renderStatuses(statuses);
+    renderStatuses(statuses, false);
     void import("./agents/sandbox").then((m) => m.refreshSandboxAvailability());
   } catch (err) {
     console.warn("CLI widget refresh failed", err);
-    const activeEl = document.getElementById("cli-active-count");
-    if (activeEl) {
-      activeEl.textContent = "?/3 Active";
-      activeEl.style.color = "var(--accent-rose)";
-    }
+    renderStatuses([], false);
+  } finally {
+    probing = false;
   }
 }
 
 export function initCliWidget(): void {
-  const refreshBtn = document.getElementById("cli-refresh-btn");
-  refreshBtn?.addEventListener("click", () => {
+  const widget = document.querySelector(".cli-engine-widget");
+  widget?.addEventListener("click", () => {
     void refreshCliWidget(true);
   });
+  // Initial paint: three offline rows, then probe.
+  renderStatuses([], true);
   void refreshCliWidget(true);
 }

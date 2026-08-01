@@ -34,10 +34,31 @@ pub struct PlanSubtask {
     pub artifact_paths: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PlanQuestion {
+    pub id: String,
+    pub prompt: String,
+    pub options: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PlanClarification {
+    pub question_id: String,
+    pub option: String,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlanAnalysis {
     pub intent: PlanIntent,
     pub subtasks: Vec<PlanSubtask>,
+    /// Clarifying questions (0–6). Empty/absent → skip Q&A UI.
+    #[serde(default)]
+    pub questions: Vec<PlanQuestion>,
+    /// User answers after confirm; absent until submitted.
+    #[serde(default)]
+    pub clarifications: Vec<PlanClarification>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -249,7 +270,335 @@ pub fn validate_plan(
         }
     }
 
+    if let Some(cycle) = detect_dependency_cycle(&plan.subtasks) {
+        return Err(format!("dependency cycle detected: {cycle}"));
+    }
+
+    for st in &mut plan.subtasks {
+        let engine = st
+            .cli_engine
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("");
+        if engine.is_empty() {
+            return Err(format!("subtask {} cli_engine must not be empty", st.id));
+        }
+        let engine = normalize_supported_engine(engine).map_err(|e| {
+            format!("subtask {}: {e}", st.id)
+        })?;
+        st.cli_engine = Some(engine.to_string());
+
+        for path in &st.artifact_paths {
+            if !is_safe_relative_artifact_path(path) {
+                return Err(format!(
+                    "subtask {}: unsafe artifact path '{path}' (must be relative, no '..')",
+                    st.id
+                ));
+            }
+        }
+
+        if let Some(ref effort) = st.reasoning_effort {
+            let e = effort.trim();
+            if !e.is_empty() && !is_known_reasoning_effort(e) {
+                return Err(format!(
+                    "subtask {}: unsupported reasoning_effort '{e}' (expected none|low|medium|high|xhigh|max|ultra)",
+                    st.id
+                ));
+            }
+        }
+    }
+
+    sanitize_questions(&mut plan, &mut warnings);
+
     Ok(ValidatePlanResult { plan, warnings })
+}
+
+const MAX_QUESTIONS: usize = 6;
+const MAX_NOTE_CHARS: usize = 500;
+
+/// Drop/truncate invalid clarifying questions; never fail the whole plan.
+pub fn sanitize_questions(plan: &mut PlanAnalysis, warnings: &mut Vec<String>) {
+    let mut kept = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for (i, q) in plan.questions.drain(..).enumerate() {
+        if kept.len() >= MAX_QUESTIONS {
+            warnings.push(format!(
+                "questions truncated to {MAX_QUESTIONS} (dropped remaining)"
+            ));
+            break;
+        }
+        let id = q.id.trim().to_string();
+        let prompt = q.prompt.trim().to_string();
+        let options: Vec<String> = q
+            .options
+            .iter()
+            .map(|o| o.trim().to_string())
+            .filter(|o| !o.is_empty())
+            .collect();
+        if id.is_empty() || prompt.is_empty() {
+            warnings.push(format!("question[{i}] missing id/prompt — dropped"));
+            continue;
+        }
+        if !(2..=4).contains(&options.len()) {
+            warnings.push(format!(
+                "question '{id}' needs 2–4 options (got {}) — dropped",
+                options.len()
+            ));
+            continue;
+        }
+        if !seen.insert(id.clone()) {
+            warnings.push(format!("duplicate question id '{id}' — dropped"));
+            continue;
+        }
+        kept.push(PlanQuestion {
+            id,
+            prompt,
+            options,
+        });
+    }
+    plan.questions = kept;
+}
+
+/// Merge user answers into the plan: write clarifications, append to prompts, clear questions.
+pub fn apply_clarifications(
+    mut plan: PlanAnalysis,
+    answers: &[PlanClarification],
+) -> Result<PlanAnalysis, String> {
+    if plan.questions.is_empty() {
+        return Err("plan has no pending clarifying questions".into());
+    }
+
+    let mut by_qid = std::collections::HashMap::new();
+    for a in answers {
+        let qid = a.question_id.trim().to_string();
+        if qid.is_empty() {
+            return Err("answer question_id must not be empty".into());
+        }
+        if by_qid.insert(qid.clone(), a).is_some() {
+            return Err(format!("duplicate answer for question '{qid}'"));
+        }
+    }
+
+    let mut clarifications = Vec::with_capacity(plan.questions.len());
+    for q in &plan.questions {
+        let ans = by_qid
+            .get(&q.id)
+            .ok_or_else(|| format!("missing answer for question '{}'", q.id))?;
+        let option = ans.option.trim().to_string();
+        if option.is_empty() {
+            return Err(format!("answer for '{}' must select an option", q.id));
+        }
+        if !q.options.iter().any(|o| o == &option) {
+            return Err(format!(
+                "answer for '{}': option '{option}' is not in {:?}",
+                q.id, q.options
+            ));
+        }
+        let note = ans
+            .note
+            .as_ref()
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty())
+            .map(|n| {
+                if n.chars().count() > MAX_NOTE_CHARS {
+                    n.chars().take(MAX_NOTE_CHARS).collect()
+                } else {
+                    n
+                }
+            });
+        clarifications.push(PlanClarification {
+            question_id: q.id.clone(),
+            option,
+            note,
+        });
+    }
+
+    let block = format_clarification_block(&plan.questions, &clarifications);
+    for st in &mut plan.subtasks {
+        let base = st.prompt.clone().unwrap_or_else(|| st.title.clone());
+        st.prompt = Some(format!("{}\n\n{}", base.trim_end(), block));
+    }
+
+    plan.clarifications = clarifications;
+    plan.questions.clear(); // answered — UI will not re-prompt
+    Ok(plan)
+}
+
+fn format_clarification_block(
+    questions: &[PlanQuestion],
+    clarifications: &[PlanClarification],
+) -> String {
+    let mut lines = vec!["## 用户澄清 (User Clarifications)".to_string()];
+    for q in questions {
+        if let Some(c) = clarifications.iter().find(|c| c.question_id == q.id) {
+            let mut line = format!("- {}: {}", q.prompt, c.option);
+            if let Some(ref note) = c.note {
+                line.push_str(&format!(" — {note}"));
+            }
+            lines.push(line);
+        }
+    }
+    lines.join("\n")
+}
+
+/// Hard runtime preflight before Dispatch — CLI installed, model/effort in live catalog.
+pub fn preflight_for_dispatch(plan: &PlanAnalysis) -> Result<Vec<String>, String> {
+    let warnings = Vec::new();
+    for st in &plan.subtasks {
+        let engine = st
+            .cli_engine
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| format!("subtask {} missing cli_engine", st.id))?;
+        let engine = normalize_supported_engine(engine)
+            .map_err(|e| format!("subtask {}: {e}", st.id))?;
+
+        if crate::services::cli_probe::resolve_engine_binary(engine).is_none() {
+            return Err(format!(
+                "subtask {}: CLI not installed or not found: {engine}",
+                st.id
+            ));
+        }
+
+        if let Some(ref model) = st.model {
+            let model = model.trim();
+            if model.is_empty() {
+                continue;
+            }
+            match crate::services::cli_models::list_engine_models(engine, false) {
+                Ok(catalog) => {
+                    let found = catalog.models.iter().find(|m| m.id == model);
+                    match found {
+                        None => {
+                            return Err(format!(
+                                "subtask {}: model '{model}' is not available for {engine}",
+                                st.id
+                            ));
+                        }
+                        Some(m) => {
+                            if let Some(ref effort) = st.reasoning_effort {
+                                let e = effort.trim();
+                                if !e.is_empty()
+                                    && !m.efforts.is_empty()
+                                    && !m.efforts.iter().any(|x| x == e)
+                                {
+                                    return Err(format!(
+                                        "subtask {}: reasoning_effort '{e}' not supported by model '{model}' (allowed: {})",
+                                        st.id,
+                                        m.efforts.join(", ")
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    return Err(format!(
+                        "subtask {}: failed to load {engine} model catalog: {e}",
+                        st.id
+                    ));
+                }
+            }
+        }
+    }
+    Ok(warnings)
+}
+
+fn normalize_supported_engine(engine: &str) -> Result<&'static str, String> {
+    match engine.trim() {
+        "cursor-agent" => Ok("cursor-agent"),
+        "codex" => Ok("codex"),
+        "opencode" => Ok("opencode"),
+        other => Err(format!(
+            "unsupported cli_engine '{other}' (expected cursor-agent|codex|opencode)"
+        )),
+    }
+}
+
+fn is_known_reasoning_effort(effort: &str) -> bool {
+    matches!(
+        effort.to_lowercase().as_str(),
+        "none" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
+    )
+}
+
+fn is_safe_relative_artifact_path(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let path = std::path::Path::new(trimmed);
+    if path.is_absolute() {
+        return false;
+    }
+    for c in path.components() {
+        if matches!(
+            c,
+            std::path::Component::ParentDir
+                | std::path::Component::RootDir
+                | std::path::Component::Prefix(_)
+        ) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Returns a human-readable cycle path if a dependency cycle exists.
+fn detect_dependency_cycle(subtasks: &[PlanSubtask]) -> Option<String> {
+    use std::collections::HashMap;
+    let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
+    for st in subtasks {
+        adj.insert(
+            st.id.as_str(),
+            st.depends_on.iter().map(|s| s.as_str()).collect(),
+        );
+    }
+    // 0=unvisited, 1=visiting, 2=done
+    let mut state: HashMap<&str, u8> = HashMap::new();
+    let mut stack: Vec<&str> = Vec::new();
+
+    fn dfs<'a>(
+        node: &'a str,
+        adj: &HashMap<&'a str, Vec<&'a str>>,
+        state: &mut HashMap<&'a str, u8>,
+        stack: &mut Vec<&'a str>,
+    ) -> Option<String> {
+        state.insert(node, 1);
+        stack.push(node);
+        if let Some(deps) = adj.get(node) {
+            for &dep in deps {
+                match state.get(dep).copied().unwrap_or(0) {
+                    1 => {
+                        let idx = stack.iter().position(|x| *x == dep).unwrap_or(0);
+                        let mut path: Vec<&str> = stack[idx..].to_vec();
+                        path.push(dep);
+                        return Some(path.join(" → "));
+                    }
+                    0 => {
+                        if let Some(c) = dfs(dep, adj, state, stack) {
+                            return Some(c);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        stack.pop();
+        state.insert(node, 2);
+        None
+    }
+
+    for st in subtasks {
+        if state.get(st.id.as_str()).copied().unwrap_or(0) == 0 {
+            if let Some(c) = dfs(st.id.as_str(), &adj, &mut state, &mut stack) {
+                return Some(c);
+            }
+        }
+    }
+    None
 }
 
 pub fn build_agent_catalog(conn: &Connection) -> Result<Vec<CatalogAgent>, String> {
@@ -298,6 +647,11 @@ RULES:
 - skills must be relative_path values that exist and are enabled for that agent (or omit).
 - depends_on must reference other subtask ids in this plan.
 - Include a concrete prompt for each subtask.
+- artifact_paths must be workspace-relative paths that the subtask will actually create (match the prompt).
+- Cross-agent pipelines are allowed. Downstream prompts must NOT assume upstream workspace paths; at runtime AgentMind copies predecessor artifacts into `.agentmind/handoff/<run_id>/<upstream_id>/` inside the consumer workspace and injects those paths into the prompt.
+- For every producer subtask that creates files, set artifact_paths to those exact relative paths so dependents can receive them.
+- If the GOAL is clear and actionable, set "questions" to [].
+- If the GOAL is ambiguous, add up to 6 clarifying questions (single-choice, 2–4 options each) that unblock planning decisions. Still produce a best-effort intent + subtasks; answers will refine prompts later.
 
 GOAL:
 {goal}
@@ -317,9 +671,16 @@ OUTPUT SCHEMA:
       "depends_on": [],
       "cli_engine": "cursor-agent|codex|opencode",
       "model": "...",
-      "reasoning_effort": "low|medium|high",
+      "reasoning_effort": "none|low|medium|high|xhigh|max|ultra",
       "prompt": "concrete instructions for the agent",
       "artifact_paths": ["relative/path.md"]
+    }}
+  ],
+  "questions": [
+    {{
+      "id": "q1",
+      "prompt": "clarifying question for the user",
+      "options": ["option A", "option B", "option C"]
     }}
   ]
 }}
@@ -357,8 +718,8 @@ mod tests {
             &[SkillUpsert {
                 id: None,
                 agent_id: agent.id.clone(),
-                relative_path: ".agent/skills/playwright-crawler.md".into(),
-                title: Some("Playwright".into()),
+                relative_path: ".agent/skills/web-crawler.md".into(),
+                title: Some("Web Crawler".into()),
                 description: None,
                 enabled: Some(true),
                 content_hash: None,
@@ -416,7 +777,7 @@ mod tests {
                 "id": "t1",
                 "title": "scrape",
                 "agent": "web-ops",
-                "skills": ["playwright-crawler.md", "missing.md"],
+                "skills": ["web-crawler.md", "missing.md"],
                 "depends_on": [],
                 "prompt": "scrape sites"
               }]
@@ -441,5 +802,65 @@ mod tests {
         let result = validate_plan(&conn, plan).unwrap();
         assert_eq!(result.plan.subtasks.len(), 1);
         assert_eq!(result.plan.subtasks[0].agent, "web-ops");
+    }
+
+    #[test]
+    fn sanitize_questions_caps_and_drops_invalid() {
+        let mut plan = parse_plan_json(
+            r#"{
+              "intent": {"summary": "x", "tags": []},
+              "subtasks": [{"id":"t1","title":"t","agent":"a","skills":[],"depends_on":[],"prompt":"p"}],
+              "questions": [
+                {"id":"q1","prompt":"Platform?","options":["Web","iOS"]},
+                {"id":"q2","prompt":"Bad","options":["only-one"]},
+                {"id":"q1","prompt":"dup","options":["A","B"]},
+                {"id":"q3","prompt":"Lang?","options":["Rust","Go","TS"]},
+                {"id":"q4","prompt":"q4","options":["a","b"]},
+                {"id":"q5","prompt":"q5","options":["a","b"]},
+                {"id":"q6","prompt":"q6","options":["a","b"]},
+                {"id":"q7","prompt":"q7","options":["a","b"]}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let mut warnings = vec![];
+        sanitize_questions(&mut plan, &mut warnings);
+        // Valid: q1,q3,q4,q5,q6,q7 (q2 bad options, duplicate q1 dropped) → 6
+        assert_eq!(plan.questions.len(), 6);
+        assert!(plan.questions.iter().all(|q| q.id != "q2"));
+        assert!(warnings.iter().any(|w| w.contains("2–4") || w.contains("duplicate")));
+    }
+
+    #[test]
+    fn apply_clarifications_appends_block_and_clears_questions() {
+        let plan = parse_plan_json(
+            r#"{
+              "intent": {"summary": "x", "tags": []},
+              "subtasks": [{
+                "id":"t1","title":"t","agent":"a","skills":[],"depends_on":[],
+                "prompt":"Do the thing"
+              }],
+              "questions": [
+                {"id":"q1","prompt":"Platform?","options":["Web","iOS"]}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let merged = apply_clarifications(
+            plan,
+            &[PlanClarification {
+                question_id: "q1".into(),
+                option: "Web".into(),
+                note: Some("desktop first".into()),
+            }],
+        )
+        .unwrap();
+        assert!(merged.questions.is_empty());
+        assert_eq!(merged.clarifications.len(), 1);
+        let prompt = merged.subtasks[0].prompt.as_deref().unwrap();
+        assert!(prompt.contains("Do the thing"));
+        assert!(prompt.contains("用户澄清"));
+        assert!(prompt.contains("Web"));
+        assert!(prompt.contains("desktop first"));
     }
 }

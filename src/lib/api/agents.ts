@@ -63,6 +63,12 @@ export type ImportAgentResult = {
   agent: Agent;
   cloned: boolean;
   workspace_path: string;
+  skills_synced?: {
+    added: number;
+    updated: number;
+    removed: number;
+  } | null;
+  skills_sync_error?: string | null;
 };
 
 export async function listAgents(): Promise<Agent[]> {

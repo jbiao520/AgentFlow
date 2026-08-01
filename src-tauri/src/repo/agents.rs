@@ -58,11 +58,34 @@ pub fn list_agents(conn: &Connection) -> Result<Vec<Agent>, String> {
              FROM agents ORDER BY name COLLATE NOCASE",
         )
         .map_err(|e| e.to_string())?;
-    let rows = stmt
+    let mut rows = stmt
         .query_map([], map_agent)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
+
+    // Derive Working from active DAG nodes (persisted status alone is never updated at runtime).
+    let working: std::collections::HashSet<String> = {
+        let mut wstmt = conn
+            .prepare(
+                "SELECT DISTINCT agent_id FROM task_nodes
+                 WHERE status = 'running' AND agent_id IS NOT NULL AND agent_id != ''",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = wstmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<std::collections::HashSet<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        rows
+    };
+    for agent in &mut rows {
+        if working.contains(&agent.id) {
+            agent.status = "working".into();
+        } else if matches!(agent.status.to_lowercase().as_str(), "working" | "running") {
+            agent.status = "idle".into();
+        }
+    }
     Ok(rows)
 }
 

@@ -11,7 +11,11 @@ import { bindNav } from "./ui/nav";
 import { initOrchestratorSettings } from "./ui/orchestrator/settings";
 import { initOrchestratorWorkbench } from "./ui/orchestrator/workbench";
 import { initOverview } from "./ui/overview/page";
+import { initAgentDetailNav } from "./ui/router";
+import { initSchedules } from "./ui/schedules/page";
 import { initTaskCenter } from "./ui/tasks/center";
+import { initTemplateLibrary } from "./ui/templates/page";
+import { initSaveTemplateWizard } from "./ui/templates/save-wizard";
 
 function mountApp(): void {
   const root = document.getElementById("app");
@@ -22,6 +26,7 @@ function mountApp(): void {
   bindNav();
   bindModals();
   initDemoActions();
+  initAgentDetailNav();
   initOverview();
   initAgentMatrix();
   initDetailSkills();
@@ -31,6 +36,9 @@ function mountApp(): void {
   initOrchestratorSettings();
   initOrchestratorWorkbench();
   initTaskCenter();
+  initTemplateLibrary();
+  initSaveTemplateWizard();
+  initSchedules();
   void initAppInfo();
 }
 

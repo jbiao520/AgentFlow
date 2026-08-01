@@ -2,7 +2,7 @@
  * Orchestrate IPC — live CLI or fixture JSON path.
  */
 import { invoke } from "@tauri-apps/api/core";
-import type { Goal, Plan } from "./tasks";
+import type { Goal, Plan, TaskNode, TaskRun } from "./tasks";
 
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -26,9 +26,23 @@ export type PlanSubtask = {
   artifact_paths?: string[];
 };
 
+export type PlanQuestion = {
+  id: string;
+  prompt: string;
+  options: string[];
+};
+
+export type PlanClarification = {
+  question_id: string;
+  option: string;
+  note?: string | null;
+};
+
 export type PlanAnalysis = {
   intent: PlanIntent;
   subtasks: PlanSubtask[];
+  questions?: PlanQuestion[];
+  clarifications?: PlanClarification[];
 };
 
 export type OrchestrateResult = {
@@ -39,6 +53,12 @@ export type OrchestrateResult = {
   warnings: string[];
   raw_output: string | null;
   error: string | null;
+};
+
+export type ConfirmPlanAnswersResult = {
+  plan: PlanAnalysis;
+  dispatch: { run: TaskRun; nodes: TaskNode[] };
+  started: boolean;
 };
 
 export async function orchestrate(
@@ -83,5 +103,17 @@ export async function orchestrateFromJson(
       plan_json: planJson,
       template_key: templateKey ?? null,
     },
+  });
+}
+
+export async function confirmPlanAnswers(
+  planId: string,
+  answers: PlanClarification[],
+): Promise<ConfirmPlanAnswersResult> {
+  if (!isTauri()) {
+    throw new Error("confirmPlanAnswers requires Tauri runtime");
+  }
+  return invoke<ConfirmPlanAnswersResult>("confirm_plan_answers", {
+    args: { plan_id: planId, answers },
   });
 }

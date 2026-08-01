@@ -12,7 +12,9 @@ export type ViewId =
   | "agents"
   | "agent-detail"
   | "commander"
-  | "tasks";
+  | "tasks"
+  | "templates"
+  | "schedules";
 
 const VIEW_IDS: readonly ViewId[] = [
   "overview",
@@ -20,6 +22,8 @@ const VIEW_IDS: readonly ViewId[] = [
   "agent-detail",
   "commander",
   "tasks",
+  "templates",
+  "schedules",
 ] as const;
 
 export { getSelectedAgentId };
@@ -41,8 +45,11 @@ export function showView(id: ViewId): void {
     targetPane.setAttribute("aria-hidden", "false");
   }
 
+  // agent-detail is reached from Agents — keep Agents highlighted in sidebar
+  const navHighlight: ViewId = id === "agent-detail" ? "agents" : id;
+
   document.querySelectorAll(".sidebar .nav-item[data-view]").forEach((item) => {
-    const active = item.getAttribute("data-view") === id;
+    const active = item.getAttribute("data-view") === navHighlight;
     item.classList.toggle("active", active);
     item.setAttribute("aria-selected", active ? "true" : "false");
   });
@@ -57,6 +64,12 @@ export function showView(id: ViewId): void {
   }
   if (id === "agents") {
     void import("./agents/matrix").then((m) => m.refreshAgentMatrix());
+  }
+  if (id === "templates") {
+    void import("./templates/page").then((m) => m.refreshTemplateLibrary());
+  }
+  if (id === "schedules") {
+    void import("./schedules/page").then((m) => m.refreshSchedules());
   }
 }
 
@@ -119,4 +132,13 @@ export async function selectAgentById(idOrName: string): Promise<void> {
 /** Back-compat for prototype onclick handlers that pass a name. */
 export function selectAgent(agentName: string): void {
   void selectAgentById(agentName);
+}
+
+/** Bind back button on agent detail → Agents list. */
+export function initAgentDetailNav(): void {
+  document
+    .getElementById("btn-back-to-agents")
+    ?.addEventListener("click", () => {
+      showView("agents");
+    });
 }

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#0f172a"/>
+  <!-- A with hole via evenodd: outer + inner counter -->
+  <path fill="#f8fafc" fill-rule="evenodd" d="
+    M512 150
+    L870 880
+    L700 880
+    L608 655
+    L416 655
+    L324 880
+    L154 880
+    Z
+    M512 330
+    L595 555
+    L429 555
+    Z
+  "/>
+  <!-- Crossbar blade sitting below the counter -->
+  <rect x="348" y="600" width="328" height="58" fill="#f8fafc"/>
+  <!-- Blue sharp tip -->
+  <polygon points="676,600 748,629 676,658" fill="#2563eb"/>
+</svg>

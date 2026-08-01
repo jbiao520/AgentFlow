@@ -1,6 +1,7 @@
 //! Shared process spawn + line streaming for engine adapters.
 use crate::db::now_iso8601;
 use crate::engines::adapter::{prepare_command, EngineRunRequest, LogEvent};
+use crate::engines::stream_decode::StreamDecoder;
 use rusqlite::Connection;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -8,6 +9,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
+use std::time::{Duration, Instant};
 
 /// Cooperative cancel flag — set to request child kill.
 #[derive(Clone, Default)]
@@ -80,10 +82,11 @@ fn canonicalize_existing(path: &str) -> Result<PathBuf, String> {
 
 /// Spawn engine process; stream stdout/stderr lines via `on_log`; return exit code.
 /// Caller must validate `req.cwd` is an imported workspace before calling.
-/// Kills child on cancel token or if the function returns early (drop).
+/// Kills child on cancel token, optional wall-clock timeout, or if the function returns early (drop).
 pub fn run_engine_unchecked<F>(
     req: &EngineRunRequest,
     cancel: &CancelToken,
+    timeout: Option<Duration>,
     mut on_log: F,
 ) -> Result<i32, String>
 where
@@ -152,18 +155,59 @@ where
     });
 
     let mut guard = KillOnDrop::new(child);
+    let mut decoder = if req.stream_output {
+        Some(StreamDecoder::new(&req.engine))
+    } else {
+        None
+    };
+    let mut last_activity = Instant::now();
+    let started = Instant::now();
+    let heartbeat = Duration::from_secs(8);
 
     loop {
+        let mut got = false;
         while let Ok(ev) = rx.try_recv() {
-            on_log(ev);
+            got = true;
+            last_activity = Instant::now();
+            if let Some(dec) = decoder.as_mut() {
+                for decoded in dec.push(ev) {
+                    on_log(decoded);
+                }
+            } else {
+                on_log(ev);
+            }
         }
 
         if cancel.is_cancelled() {
+            if let Some(dec) = decoder.as_mut() {
+                for ev in dec.finish() {
+                    on_log(ev);
+                }
+            }
             emit(&mut on_log, "stderr", "[cancelled]");
             drop(guard);
             let _ = out_handle.join();
             let _ = err_handle.join();
             return Err("sandbox run cancelled".into());
+        }
+
+        if let Some(limit) = timeout {
+            if started.elapsed() >= limit {
+                if let Some(dec) = decoder.as_mut() {
+                    for ev in dec.finish() {
+                        on_log(ev);
+                    }
+                }
+                emit(
+                    &mut on_log,
+                    "stderr",
+                    &format!("[timeout] exceeded {}s", limit.as_secs()),
+                );
+                drop(guard);
+                let _ = out_handle.join();
+                let _ = err_handle.join();
+                return Err(format!("node timed out after {}s", limit.as_secs()));
+            }
         }
 
         match guard.child.as_mut().unwrap().try_wait() {
@@ -173,13 +217,32 @@ where
                 let _ = out_handle.join();
                 let _ = err_handle.join();
                 while let Ok(ev) = rx.try_recv() {
-                    on_log(ev);
+                    if let Some(dec) = decoder.as_mut() {
+                        for decoded in dec.push(ev) {
+                            on_log(decoded);
+                        }
+                    } else {
+                        on_log(ev);
+                    }
+                }
+                if let Some(dec) = decoder.as_mut() {
+                    for ev in dec.finish() {
+                        on_log(ev);
+                    }
                 }
                 let code = status.code().unwrap_or(if status.success() { 0 } else { 1 });
                 return Ok(code);
             }
             Ok(None) => {
-                thread::sleep(std::time::Duration::from_millis(40));
+                if !got && last_activity.elapsed() >= heartbeat {
+                    emit(
+                        &mut on_log,
+                        "status",
+                        "… still working (waiting for model output)",
+                    );
+                    last_activity = Instant::now();
+                }
+                thread::sleep(Duration::from_millis(40));
             }
             Err(e) => {
                 drop(guard);
@@ -203,7 +266,7 @@ where
     let cwd = validate_imported_workspace(conn, &req.cwd)?;
     let mut req = req.clone();
     req.cwd = cwd;
-    run_engine_unchecked(&req, cancel, on_log)
+    run_engine_unchecked(&req, cancel, None, on_log)
 }
 
 fn emit<F: FnMut(LogEvent)>(on_log: &mut F, stream: &str, line: &str) {
@@ -270,6 +333,7 @@ mod tests {
             reasoning: None,
             extra_args: vec![],
             env: HashMap::new(),
+            stream_output: true,
         };
     }
 }

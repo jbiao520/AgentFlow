@@ -12,7 +12,14 @@ pub fn prepare(req: &EngineRunRequest) -> Result<PreparedCommand, String> {
         "run".to_string(),
         "--dir".to_string(),
         req.cwd.clone(),
+        // Auto-approve all tool permissions not explicitly denied (full automation).
+        "--auto".to_string(),
     ];
+
+    if req.stream_output {
+        args.push("--format".to_string());
+        args.push("json".to_string());
+    }
 
     if let Some(model) = req.model.as_ref().filter(|m| !m.trim().is_empty()) {
         args.push("-m".to_string());
@@ -45,11 +52,14 @@ mod tests {
             reasoning: Some("high".into()),
             extra_args: vec![],
             env: HashMap::new(),
+            stream_output: false,
         };
         match prepare(&req) {
             Ok(cmd) => {
                 assert_eq!(cmd.args.first().map(String::as_str), Some("run"));
                 assert!(cmd.args.windows(2).any(|w| w[0] == "--dir" && w[1] == "/tmp/ws"));
+                assert!(cmd.args.iter().any(|a| a == "--auto"));
+                assert!(!cmd.args.iter().any(|a| a == "--format"));
                 assert!(cmd
                     .args
                     .windows(2)
@@ -61,6 +71,26 @@ mod tests {
                 assert_eq!(cmd.args.last().map(String::as_str), Some("hi"));
             }
             Err(e) => assert!(e.contains("CLI not found")),
+        }
+    }
+
+    #[test]
+    fn stream_mode_uses_json_format() {
+        let req = EngineRunRequest {
+            engine: "opencode".into(),
+            cwd: "/tmp/ws".into(),
+            prompt: "hi".into(),
+            model: None,
+            reasoning: None,
+            extra_args: vec![],
+            env: HashMap::new(),
+            stream_output: true,
+        };
+        if let Ok(cmd) = prepare(&req) {
+            assert!(cmd
+                .args
+                .windows(2)
+                .any(|w| w[0] == "--format" && w[1] == "json"));
         }
     }
 }

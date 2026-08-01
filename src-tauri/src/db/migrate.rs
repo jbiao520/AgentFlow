@@ -1,9 +1,9 @@
 use rusqlite::Connection;
 
 const SCHEMA_SQL: &str = include_str!("schema.sql");
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 3;
 
-/// Idempotent schema migration to v1. Seeds orchestrator_settings id=1 if missing.
+/// Idempotent schema migration to current version. Seeds orchestrator_settings id=1 if missing.
 pub fn migrate(conn: &Connection) -> Result<(), String> {
     conn.execute_batch("PRAGMA foreign_keys = ON;")
         .map_err(|e| format!("enable foreign_keys: {e}"))?;
@@ -42,17 +42,61 @@ fn seed_orchestrator_settings(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
-pub fn now_iso8601() -> String {
+pub fn now_unix() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
+    SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
-        .unwrap_or(0);
-    // Simple UTC ISO-8601 without chrono dep
-    format_unix_as_iso8601(secs)
+        .unwrap_or(0)
 }
 
-fn format_unix_as_iso8601(secs: u64) -> String {
+pub fn now_iso8601() -> String {
+    format_unix_as_iso8601(now_unix())
+}
+
+/// Parse `YYYY-MM-DDTHH:MM:SSZ` / `YYYY-MM-DDTHH:MM:SS` / with optional fractional seconds.
+pub fn parse_iso8601_unix(s: &str) -> Result<u64, String> {
+    let t = s.trim();
+    if t.is_empty() {
+        return Err("empty timestamp".into());
+    }
+    let t = t.strip_suffix('Z').unwrap_or(t);
+    let t = if let Some(i) = t.find('.') {
+        &t[..i]
+    } else {
+        t
+    };
+    // Also accept space separator
+    let t = t.replace(' ', "T");
+    let parts: Vec<&str> = t.split('T').collect();
+    if parts.len() != 2 {
+        return Err(format!("invalid iso8601: {s}"));
+    }
+    let date: Vec<&str> = parts[0].split('-').collect();
+    let time: Vec<&str> = parts[1].split(':').collect();
+    if date.len() != 3 || time.len() < 2 {
+        return Err(format!("invalid iso8601: {s}"));
+    }
+    let y: i32 = date[0].parse().map_err(|_| format!("bad year in {s}"))?;
+    let m: u32 = date[1].parse().map_err(|_| format!("bad month in {s}"))?;
+    let d: u32 = date[2].parse().map_err(|_| format!("bad day in {s}"))?;
+    let hh: u64 = time[0].parse().map_err(|_| format!("bad hour in {s}"))?;
+    let mm: u64 = time[1].parse().map_err(|_| format!("bad minute in {s}"))?;
+    let ss: u64 = if time.len() >= 3 {
+        time[2]
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect::<String>()
+            .parse()
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let days = days_from_civil(y, m, d)? as u64;
+    Ok(days * 86400 + hh * 3600 + mm * 60 + ss)
+}
+
+pub fn format_unix_as_iso8601(secs: u64) -> String {
     // Approximate civil date from unix seconds (UTC)
     let days = (secs / 86400) as i64;
     let tod = secs % 86400;
@@ -61,6 +105,23 @@ fn format_unix_as_iso8601(secs: u64) -> String {
     let mm = (tod % 3600) / 60;
     let ss = tod % 60;
     format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
+}
+
+/// Inverse of civil_from_days — days since Unix epoch (1970-01-01).
+fn days_from_civil(y: i32, m: u32, d: u32) -> Result<i64, String> {
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return Err(format!("invalid date {y}-{m:02}-{d:02}"));
+    }
+    let y = y as i64;
+    let m = m as i64;
+    let d = d as i64;
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = (y - era * 400) as u64;
+    let mp = if m > 2 { m - 3 } else { m + 9 };
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy as u64;
+    Ok(era * 146097 + doe as i64 - 719468)
 }
 
 /// Howard Hinnant civil_from_days (proleptic Gregorian).
@@ -97,6 +158,8 @@ mod tests {
             "task_nodes",
             "task_logs",
             "cli_engine_status",
+            "templates",
+            "schedules",
         ]
     }
 

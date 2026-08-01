@@ -6,3 +6,4 @@ pub mod codex;
 pub mod cursor_agent;
 pub mod opencode;
 pub mod runner;
+pub mod stream_decode;

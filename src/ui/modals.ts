@@ -9,6 +9,15 @@ import {
 import { submitImportModal as runImportSubmit } from "./agents/import-modal";
 import { showView } from "./router";
 
+type ConfirmActionOptions = {
+  title?: string;
+  confirmLabel?: string;
+  destructive?: boolean;
+};
+
+let confirmResolver: ((confirmed: boolean) => void) | null = null;
+let confirmPreviousFocus: HTMLElement | null = null;
+
 function isOverlayClick(event: Event | undefined, overlayId: string): boolean {
   if (!event) return true;
   const target = event.target as HTMLElement | null;
@@ -69,6 +78,72 @@ export function closeSkillDetailModal(event?: Event): void {
   document.getElementById("skill-modal")?.classList.remove("active");
 }
 
+function settleConfirmAction(confirmed: boolean): void {
+  const resolver = confirmResolver;
+  if (!resolver) return;
+
+  confirmResolver = null;
+  const modal = document.getElementById("confirm-modal");
+  modal?.classList.remove("active");
+  modal?.setAttribute("aria-hidden", "true");
+
+  const previousFocus = confirmPreviousFocus;
+  confirmPreviousFocus = null;
+  previousFocus?.focus();
+  resolver(confirmed);
+}
+
+/**
+ * Show an app-native asynchronous confirmation dialog.
+ *
+ * Do not use window.confirm in Tauri's WKWebView: its synchronous JavaScript
+ * dialog support is not reliable across Wry/WebKit versions.
+ */
+export function confirmAction(
+  message: string,
+  options: ConfirmActionOptions = {},
+): Promise<boolean> {
+  if (confirmResolver) {
+    // A destructive action is already awaiting confirmation. Ignore duplicate
+    // clicks instead of replacing its resolver and leaving a Promise pending.
+    return Promise.resolve(false);
+  }
+
+  const modal = document.getElementById("confirm-modal");
+  const title = document.getElementById("confirm-modal-title");
+  const body = document.getElementById("confirm-modal-message");
+  const submit = document.getElementById(
+    "confirm-modal-submit",
+  ) as HTMLButtonElement | null;
+  const cancel = document.getElementById(
+    "confirm-modal-cancel",
+  ) as HTMLButtonElement | null;
+
+  if (!modal || !title || !body || !submit || !cancel) {
+    return Promise.reject(new Error("confirmation dialog is not mounted"));
+  }
+
+  title.textContent = options.title ?? "确认操作";
+  body.textContent = message;
+  submit.textContent = options.confirmLabel ?? "确认";
+  submit.classList.toggle("btn-danger", options.destructive !== false);
+  submit.classList.toggle("btn-primary", options.destructive === false);
+
+  confirmPreviousFocus =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+
+  return new Promise<boolean>((resolve) => {
+    confirmResolver = resolve;
+    requestAnimationFrame(() => {
+      if (confirmResolver) cancel.focus();
+    });
+  });
+}
+
 /** Wire buttons that should not rely solely on inline handlers. */
 export function bindModals(): void {
   document
@@ -99,6 +174,19 @@ export function bindModals(): void {
     .querySelector("#skill-modal .modal-card")
     ?.addEventListener("click", (e) => e.stopPropagation());
 
+  document.getElementById("confirm-modal")?.addEventListener("click", (e) => {
+    if (isOverlayClick(e, "confirm-modal")) settleConfirmAction(false);
+  });
+  document
+    .querySelector("#confirm-modal .modal-card")
+    ?.addEventListener("click", (e) => e.stopPropagation());
+  document
+    .getElementById("confirm-modal-cancel")
+    ?.addEventListener("click", () => settleConfirmAction(false));
+  document
+    .getElementById("confirm-modal-submit")
+    ?.addEventListener("click", () => settleConfirmAction(true));
+
   // Legacy static nav items (if present) — primary list is rendered by cmdk.ts
   document.querySelectorAll("#cmdk-modal .nav-item[data-cmdk-view]").forEach((item) => {
     item.addEventListener("click", () => {
@@ -121,6 +209,7 @@ export function bindModals(): void {
       openCmdKModal();
     }
     if (e.key === "Escape") {
+      settleConfirmAction(false);
       closeCmdKModal();
       closeImportModal();
       closeSkillDetailModal();

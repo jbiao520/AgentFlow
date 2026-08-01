@@ -10,7 +10,9 @@ import {
   type QueueItem,
   type TopologyNode,
 } from "../../lib/api/overview";
+import { updateNavCounts } from "../nav-counts";
 import { selectAgentById, showView } from "../router";
+import { openTaskRun } from "../tasks/center";
 import { showToast } from "../toast";
 
 function escapeHtml(s: string): string {
@@ -205,7 +207,7 @@ function renderTopology(topo: OverviewTopology): void {
 
   if (agents.length === 0) {
     nodesHtml += `
-      <text x="450" y="130" fill="#64748b" font-size="12" text-anchor="middle">暂无 Agent — 点击导入或打开矩阵</text>`;
+      <text x="450" y="130" fill="#64748b" font-size="12" text-anchor="middle">暂无 Agent — 点击导入或打开 Agents</text>`;
   }
 
   svg.innerHTML = `
@@ -287,7 +289,11 @@ function renderQueue(items: QueueItem[]): void {
     .join("");
 
   tbody.querySelectorAll("tr[data-run-id]").forEach((row) => {
-    row.addEventListener("click", () => showView("tasks"));
+    row.addEventListener("click", () => {
+      const runId = (row as HTMLElement).dataset.runId;
+      if (runId) void openTaskRun(runId);
+      else showView("tasks");
+    });
   });
 }
 
@@ -301,6 +307,7 @@ export async function refreshOverview(): Promise<void> {
     renderStats(stats);
     renderTopology(topo);
     renderQueue(queue);
+    updateNavCounts(stats.agent_count, stats.running_tasks);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     showToast(`总览加载失败: ${msg}`);

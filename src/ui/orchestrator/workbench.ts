@@ -1,11 +1,14 @@
 /**
- * Commander workbench: Orchestrate → render intent / subtasks / routing table.
+ * Commander workbench: Orchestrate → optional clarification Q&A → Dispatch / Start.
  */
 import {
+  confirmPlanAnswers,
   orchestrate,
   orchestrateFromJson,
   type OrchestrateResult,
   type PlanAnalysis,
+  type PlanClarification,
+  type PlanQuestion,
 } from "../../lib/api/orchestrate";
 import { dispatchPlan, startRun } from "../../lib/api/tasks";
 import { showView } from "../router";
@@ -34,6 +37,17 @@ export function getLastOrchestrateResult(): OrchestrateResult | null {
   return state.result;
 }
 
+/** Used by template preview to hydrate Commander with an instantiated Plan. */
+export function setOrchestrateResult(result: OrchestrateResult | null): void {
+  state.result = result;
+  const planId = result?.plan_row?.id;
+  const planOk = !!(result?.ok && result?.plan && planId);
+  setDispatchEnabled(
+    planOk,
+    planOk ? undefined : "没有可分发的有效 Plan — 请先 Orchestrate",
+  );
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -49,6 +63,20 @@ function agentColor(name: string): string {
   return palette[h % palette.length];
 }
 
+function planQuestions(plan: PlanAnalysis): PlanQuestion[] {
+  return Array.isArray(plan.questions) ? plan.questions : [];
+}
+
+async function goToTaskRun(runId: string, nodeCount: number): Promise<void> {
+  showToast(`已分发 ${nodeCount} 个节点，开始执行`, { kind: "success" });
+  showView("tasks");
+  window.dispatchEvent(
+    new CustomEvent("agentmind:run-started", {
+      detail: { runId },
+    }),
+  );
+}
+
 async function dispatchCurrentPlan(): Promise<void> {
   const planId = state.result?.plan_row?.id;
   const planOk = !!(state.result?.ok && state.result?.plan && planId);
@@ -57,27 +85,125 @@ async function dispatchCurrentPlan(): Promise<void> {
     setDispatchEnabled(false);
     return;
   }
+  const questions = planQuestions(state.result!.plan!);
+  if (questions.length > 0) {
+    showToast("请先回答澄清问题，再提交并执行", { kind: "error" });
+    return;
+  }
   try {
     const dispatched = await dispatchPlan(planId);
     await startRun(dispatched.run.id);
-    showToast(`已分发 ${dispatched.nodes.length} 个节点，开始执行`, {
-      kind: "success",
-    });
-    showView("tasks");
-    window.dispatchEvent(
-      new CustomEvent("agentmind:run-started", {
-        detail: { runId: dispatched.run.id },
-      }),
-    );
+    await goToTaskRun(dispatched.run.id, dispatched.nodes.length);
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);
     showToast(`分发失败: ${formatActionableError(raw)}`, { kind: "error" });
   }
 }
 
+function cssIdent(s: string): string {
+  // Prefer CSS.escape when available (WKWebView); fall back for simple ids.
+  const esc = (globalThis as { CSS?: { escape?: (x: string) => string } }).CSS
+    ?.escape;
+  return esc ? esc(s) : s.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+}
+
+function collectAnswers(root: HTMLElement, questions: PlanQuestion[]): PlanClarification[] | null {
+  const answers: PlanClarification[] = [];
+  for (const q of questions) {
+    const selected = root.querySelector(
+      `input[name="clarify-${cssIdent(q.id)}"]:checked`,
+    ) as HTMLInputElement | null;
+    if (!selected) {
+      showToast(`请选择：${q.prompt}`, { kind: "error" });
+      return null;
+    }
+    const noteEl = root.querySelector(
+      `textarea[data-clarify-note="${cssIdent(q.id)}"]`,
+    ) as HTMLTextAreaElement | null;
+    const note = noteEl?.value.trim() || "";
+    answers.push({
+      question_id: q.id,
+      option: selected.value,
+      note: note || null,
+    });
+  }
+  return answers;
+}
+
+async function submitClarifications(
+  planId: string,
+  questions: PlanQuestion[],
+): Promise<void> {
+  const panel = document.getElementById("orch-clarify-panel");
+  if (!panel) return;
+  const answers = collectAnswers(panel, questions);
+  if (!answers) return;
+
+  const btn = document.getElementById(
+    "confirm-answers-btn",
+  ) as HTMLButtonElement | null;
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("is-busy");
+    btn.innerHTML =
+      '<span class="btn-spinner" aria-hidden="true"></span>提交并执行中…';
+  }
+
+  try {
+    const result = await confirmPlanAnswers(planId, answers);
+    if (state.result) {
+      state.result.plan = result.plan;
+    }
+    await goToTaskRun(result.dispatch.run.id, result.dispatch.nodes.length);
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : String(e);
+    showToast(`提交失败: ${formatActionableError(raw)}`, { kind: "error" });
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove("is-busy");
+      btn.textContent = "提交并执行";
+    }
+  }
+}
+
+function renderClarifyPanel(questions: PlanQuestion[]): string {
+  const items = questions
+    .map((q, i) => {
+      const opts = q.options
+        .map((opt, oi) => {
+          const id = `clarify-${escapeHtml(q.id)}-${oi}`;
+          return `<label class="clarify-option" for="${id}">
+            <input type="radio" id="${id}" name="clarify-${escapeHtml(q.id)}" value="${escapeHtml(opt)}" />
+            <span>${escapeHtml(opt)}</span>
+          </label>`;
+        })
+        .join("");
+      return `<div class="clarify-item" data-question-id="${escapeHtml(q.id)}">
+        <div class="clarify-prompt">${i + 1}. ${escapeHtml(q.prompt)}</div>
+        <div class="clarify-options">${opts}</div>
+        <textarea class="clarify-note" data-clarify-note="${escapeHtml(q.id)}" rows="2" placeholder="补充说明（可选）"></textarea>
+      </div>`;
+    })
+    .join("");
+
+  return `<div class="orch-step-card orch-clarify-card" id="orch-clarify-panel">
+    <div class="step-number">?</div>
+    <div class="step-content">
+      <div class="step-header">
+        <div class="step-title">澄清问答 (${questions.length})</div>
+        <span style="font-size:11px; color:var(--fg-muted);">单选 + 可选补充 · 提交后直接执行</span>
+      </div>
+      <div class="clarify-list">${items}</div>
+    </div>
+  </div>`;
+}
+
 export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): void {
   const root = document.getElementById("orch-results");
   if (!root) return;
+
+  const questions = planQuestions(plan);
+  const needsClarify = questions.length > 0;
 
   const tags = plan.intent.tags
     .map(
@@ -122,14 +248,25 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
       ? `<div style="font-size:11px; color:#b45309; margin-bottom:10px;">Warnings: ${warnings.map(escapeHtml).join("; ")}</div>`
       : "";
 
+  const actionBtn = needsClarify
+    ? `<button class="btn btn-primary btn-sm" id="confirm-answers-btn" style="background:var(--accent-emerald);">提交并执行</button>`
+    : `<div style="display:flex; gap:6px;">
+        <button class="btn btn-secondary btn-sm" id="save-plan-template-btn">保存为模版</button>
+        <button class="btn btn-primary btn-sm" id="dispatch-plan-btn" style="background:var(--accent-emerald);">确认并分发任务 (Dispatch)</button>
+      </div>`;
+
+  const clarifyBlock = needsClarify ? renderClarifyPanel(questions) : "";
+  const stepOffset = needsClarify ? 1 : 0;
+
   root.innerHTML = `
     <div class="panel-title-bar">
       <div class="panel-title">智能调度拆解与路由方案</div>
-      <button class="btn btn-primary btn-sm" id="dispatch-plan-btn" style="background:var(--accent-emerald);">确认并分发任务 (Dispatch)</button>
+      ${actionBtn}
     </div>
     ${warnBlock}
+    ${clarifyBlock}
     <div class="orch-step-card">
-      <div class="step-number">1</div>
+      <div class="step-number">${1 + stepOffset}</div>
       <div class="step-content">
         <div class="step-header">
           <div class="step-title">意图分析 (Intent Analysis)</div>
@@ -139,7 +276,7 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
       </div>
     </div>
     <div class="orch-step-card">
-      <div class="step-number">2</div>
+      <div class="step-number">${2 + stepOffset}</div>
       <div class="step-content">
         <div class="step-header">
           <div class="step-title">任务子目标拆解 (Task Decomposition)</div>
@@ -151,7 +288,7 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
       </div>
     </div>
     <div class="orch-step-card">
-      <div class="step-number">3</div>
+      <div class="step-number">${3 + stepOffset}</div>
       <div class="step-content">
         <div class="step-header">
           <div class="step-title">Agent & Skill & Model 路由矩阵</div>
@@ -173,17 +310,46 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
 
   root.style.display = "";
   const canDispatch = plan.subtasks.length > 0;
-  setDispatchEnabled(
-    canDispatch,
-    canDispatch ? undefined : "Plan 无子任务，无法 Dispatch",
-  );
-  document.getElementById("dispatch-plan-btn")?.addEventListener("click", () => {
-    if (!canDispatch) {
-      showToast("Plan 无效：至少需要一个子任务", { kind: "error" });
-      return;
-    }
-    void dispatchCurrentPlan();
-  });
+
+  if (needsClarify) {
+    const planId = state.result?.plan_row?.id;
+    document.getElementById("confirm-answers-btn")?.addEventListener("click", () => {
+      if (!canDispatch || !planId) {
+        showToast("Plan 无效：至少需要一个子任务", { kind: "error" });
+        return;
+      }
+      void submitClarifications(planId, questions);
+    });
+  } else {
+    setDispatchEnabled(
+      canDispatch,
+      canDispatch ? undefined : "Plan 无子任务，无法 Dispatch",
+    );
+    document.getElementById("dispatch-plan-btn")?.addEventListener("click", () => {
+      if (!canDispatch) {
+        showToast("Plan 无效：至少需要一个子任务", { kind: "error" });
+        return;
+      }
+      void dispatchCurrentPlan();
+    });
+    document
+      .getElementById("save-plan-template-btn")
+      ?.addEventListener("click", () => {
+        void import("../templates/save-wizard").then((m) => {
+          const r = state.result;
+          if (!r?.ok || !r.plan_row || !r.goal) {
+            showToast("没有可保存的 Plan", { kind: "error" });
+            return;
+          }
+          void m.openSaveTemplateWizard({
+            goalId: r.goal.id,
+            planId: r.plan_row.id,
+            goalPrompt: r.goal.prompt,
+            planJson: r.plan_row.analysis_json,
+          });
+        });
+      });
+  }
 }
 
 export function renderOrchestrateError(error: string, raw: string | null): void {
@@ -224,8 +390,10 @@ async function runOrchestrate(): Promise<void> {
   }
 
   if (btn) {
-    btn.innerHTML = "正在分析意图与建图 (Orchestrating)...";
-    (btn as HTMLElement).style.opacity = "0.7";
+    btn.classList.add("is-busy");
+    btn.innerHTML =
+      '<span class="btn-spinner" aria-hidden="true"></span>正在分析意图与建图…';
+    (btn as HTMLElement).style.opacity = "0.85";
     (btn as HTMLButtonElement).disabled = true;
   }
 
@@ -250,8 +418,11 @@ async function runOrchestrate(): Promise<void> {
       return;
     }
     renderPlanWorkbench(result.plan, result.warnings || []);
+    const qn = planQuestions(result.plan).length;
     showToast(
-      `调度拆解完成！包含 ${result.plan.subtasks.length} 个子任务与路由矩阵`,
+      qn > 0
+        ? `调度拆解完成：${result.plan.subtasks.length} 个子任务，请回答 ${qn} 个澄清问题`
+        : `调度拆解完成！包含 ${result.plan.subtasks.length} 个子任务与路由矩阵`,
       { kind: "success" },
     );
   } catch (e) {
@@ -261,6 +432,7 @@ async function runOrchestrate(): Promise<void> {
     showToast(`调度失败: ${formatActionableError(msg)}`, { kind: "error" });
   } finally {
     if (btn) {
+      btn.classList.remove("is-busy");
       btn.innerHTML = "启动智能调度拆解 (Orchestrate)";
       (btn as HTMLElement).style.opacity = "1";
       (btn as HTMLButtonElement).disabled = false;

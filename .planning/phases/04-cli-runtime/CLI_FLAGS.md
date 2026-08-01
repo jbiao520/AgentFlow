@@ -48,37 +48,44 @@ All three CLIs were present on this machine.
 cursor-agent --print \
   --output-format text \
   --trust \
+  --force \
   --workspace "<CWD>" \
   --model "<MODEL>" \
   "<PROMPT>"
 ```
 
-With effort (when the model supports bracket overrides):
+With effort (AgentMind stores base model + effort separately; adapter recomposes suffix):
 
 ```bash
 cursor-agent --print \
   --trust \
+  --force \
   --workspace "<CWD>" \
-  --model 'claude-opus-4-8[effort=high]' \
+  --model 'claude-opus-4-8-high' \
   "<PROMPT>"
 ```
 
-Streamed JSON (adapters / event parsing):
+Parameterized bracket overrides remain valid if a full id already embeds options, but AgentMind's adapter prefers the **suffix** form `{base}-{effort}` to match `cursor-agent models` ids.
+Sandbox / DAG streaming (adapters decode JSONL → `[AGENT]` / `[THINK]` terminal lines):
 
 ```bash
 cursor-agent --print \
   --output-format stream-json \
   --stream-partial-output \
   --trust \
+  --force \
   --workspace "<CWD>" \
   --model "<MODEL>" \
   "<PROMPT>"
 ```
 
+Orchestrate keeps `--output-format text` so the final Plan blob stays parseable.
+
 ### Notes
 
 - Verified on this machine.
-- No standalone `--reasoning` / `--effort` flag; use model bracket overrides.
+- `--trust` only skips the workspace trust prompt. Shell/tool approval still needs `--force` (`--yolo` alias) or commands are rejected in non-interactive `--print` runs.
+- No standalone `--reasoning` / `--effort` flag; AgentMind recomposes `--model {base}-{effort}` from catalog suffixes (`low|medium|high|xhigh|max`). Bracket overrides (`model[effort=…]`) are still accepted by the CLI but not used by the adapter.
 - `--mode plan|ask` and `--plan` are read-oriented modes, not the primary “run agent” path for write-capable automation.
 
 ---
@@ -119,14 +126,14 @@ codex exec \
   "<PROMPT>"
 ```
 
-Automation-friendly (dangerous; only in already-sandboxed hosts):
+Automation-friendly (full permissions; non-interactive):
 
 ```bash
 codex exec \
   -C "<CWD>" \
   -m "<MODEL>" \
-  --ask-for-approval never \
-  --sandbox workspace-write \
+  --skip-git-repo-check \
+  --dangerously-bypass-approvals-and-sandbox \
   --json \
   "<PROMPT>"
 ```
@@ -139,8 +146,10 @@ codex exec -C "<CWD>" -c model="<MODEL>" "<PROMPT>"
 
 ### Notes
 
-- Verified on this machine.
+- Verified on this machine (codex-cli 0.145.0).
 - Use **`codex exec`**, not interactive `codex [PROMPT]`, for Phase 4 adapters.
+- Adapter uses `--dangerously-bypass-approvals-and-sandbox` so shell/tool calls are not blocked in headless runs. AgentMind already constrains cwd to the imported agent workspace.
+- Sandbox / DAG runs pass `--json` and decode JSONL into live `[AGENT]` / `[STATUS]` terminal lines.
 - No `--effort` / `--reasoning` in `codex exec --help`; document any reasoning settings as config (`-c …`) once confirmed against `~/.codex/config.toml` schema — mark adapter wiring **UNVERIFIED** until validated.
 
 ---
@@ -189,6 +198,7 @@ opencode run --dir "<CWD>" -m "<provider>/<model>" "<PROMPT>"
 ### Notes
 
 - Verified on this machine.
+- `--auto` auto-approves permissions not explicitly denied — required for headless shell/file writes.
 - `--variant` is the clearest first-class effort/reasoning knob among the three CLIs.
 - Default `opencode [project]` starts TUI; adapters should always use **`opencode run`**.
 
@@ -200,10 +210,11 @@ opencode run --dir "<CWD>" -m "<provider>/<model>" "<PROMPT>"
 |-------------------|--------------|-------|----------|
 | Prompt | positional args | `exec` positional / stdin | `run` positional `message..` |
 | Model | `--model` | `-m` / `-c model=` | `-m provider/model` |
-| Effort / reasoning | `--model '…[effort=…]'` | config `-c` (UNVERIFIED) | `--variant` |
+| Effort / reasoning | `--model '…-{effort}'` (suffix; see §1) | config `-c` (UNVERIFIED) | `--variant` |
 | CWD | `--workspace` | `-C` / `--cd` | `--dir` |
 | Non-interactive | `--print` | `exec` | `run` |
 | Structured stream | `--output-format stream-json` | `--json` | `--format json` |
+| Auto-approve tools | `--force` (+ `--trust`) | `--dangerously-bypass-approvals-and-sandbox` | `--auto` |
 
 ---
 

@@ -210,6 +210,27 @@ pub fn save_plan(conn: &Connection, goal_id: &str, analysis_json: &str) -> Resul
     })
 }
 
+/// Overwrite a plan's analysis_json (used after clarification merge).
+pub fn update_plan_analysis(
+    conn: &Connection,
+    plan_id: &str,
+    analysis_json: &str,
+) -> Result<Plan, String> {
+    if analysis_json.trim().is_empty() {
+        return Err("analysis_json must not be empty".into());
+    }
+    let n = conn
+        .execute(
+            "UPDATE plans SET analysis_json = ?1 WHERE id = ?2",
+            params![analysis_json, plan_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if n == 0 {
+        return Err(format!("plan not found: {plan_id}"));
+    }
+    get_plan(conn, plan_id)?.ok_or_else(|| format!("plan missing after update: {plan_id}"))
+}
+
 pub fn create_task_run(conn: &Connection, goal_id: &str, plan_id: &str) -> Result<TaskRun, String> {
     let goal_ok: bool = conn
         .query_row("SELECT 1 FROM goals WHERE id = ?1", [goal_id], |_| Ok(true))
@@ -322,6 +343,22 @@ pub fn list_task_runs(conn: &Connection, limit: i64) -> Result<Vec<TaskRun>, Str
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
     Ok(rows)
+}
+
+/// Delete a run; nodes/logs cascade via FK. Returns false if id missing.
+pub fn delete_task_run(conn: &Connection, id: &str) -> Result<bool, String> {
+    let n = conn
+        .execute("DELETE FROM task_runs WHERE id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(n > 0)
+}
+
+/// Delete all runs; nodes/logs cascade. Returns number of deleted runs.
+pub fn clear_task_runs(conn: &Connection) -> Result<u64, String> {
+    let n = conn
+        .execute("DELETE FROM task_runs", [])
+        .map_err(|e| e.to_string())?;
+    Ok(n as u64)
 }
 
 pub fn get_task_run(conn: &Connection, id: &str) -> Result<Option<TaskRunWithNodes>, String> {
@@ -684,5 +721,32 @@ mod tests {
         let full = get_task_run(&conn, &run.id).unwrap().unwrap();
         assert_eq!(full.nodes.len(), 2);
         assert_eq!(full.run.id, run.id);
+
+        assert!(delete_task_run(&conn, &run.id).unwrap());
+        assert!(get_task_run(&conn, &run.id).unwrap().is_none());
+        assert_eq!(list_task_logs(&conn, &run.id, None).unwrap().len(), 0);
+        assert!(!delete_task_run(&conn, &run.id).unwrap());
+
+        let run2 = create_task_run(&conn, &goal.id, &plan.id).unwrap();
+        let _ = insert_task_nodes(
+            &conn,
+            &run2.id,
+            &[TaskNodeInsert {
+                id: None,
+                seq: 0,
+                title: "only".into(),
+                agent_id: None,
+                skill_ids_json: None,
+                cli_engine: None,
+                model: None,
+                reasoning_effort: None,
+                depends_on_json: None,
+                status: None,
+                artifact_paths_json: None,
+            }],
+        )
+        .unwrap();
+        assert_eq!(clear_task_runs(&conn).unwrap(), 1);
+        assert!(list_task_runs(&conn, 10).unwrap().is_empty());
     }
 }

@@ -3,17 +3,18 @@ use crate::db::path::ensure_db_dir;
 use crate::engines::adapter::{EngineRunRequest, LogEvent};
 use crate::engines::runner::{run_engine_unchecked, CancelToken};
 use crate::repo::{
-    create_goal, get_orchestrator_settings, save_plan, Goal, Plan,
+    create_goal, get_orchestrator_settings, get_plan, save_plan, update_plan_analysis, Goal, Plan,
 };
+use crate::services::dispatch::{dispatch_plan as svc_dispatch, DispatchResult};
 use crate::services::orchestrate::{
-    build_agent_catalog, build_orchestrate_prompt, parse_plan_json, plan_to_analysis_json,
-    validate_plan, PlanAnalysis,
+    apply_clarifications, build_agent_catalog, build_orchestrate_prompt, parse_plan_json,
+    plan_to_analysis_json, validate_plan, PlanAnalysis, PlanClarification,
 };
-use crate::state::DbState;
+use crate::state::{DbState, RunState};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrchestrateArgs {
@@ -39,6 +40,19 @@ pub struct OrchestrateResult {
     pub warnings: Vec<String>,
     pub raw_output: Option<String>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfirmPlanAnswersArgs {
+    pub plan_id: String,
+    pub answers: Vec<PlanClarification>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfirmPlanAnswersResult {
+    pub plan: PlanAnalysis,
+    pub dispatch: DispatchResult,
+    pub started: bool,
 }
 
 fn orchestrate_cwd() -> Result<String, String> {
@@ -125,8 +139,9 @@ pub fn orchestrate_from_json(
 }
 
 /// Live CLI orchestrate using orchestrator_settings.
+/// CLI spawn runs off the UI thread via `spawn_blocking`.
 #[tauri::command]
-pub fn orchestrate(
+pub async fn orchestrate(
     state: State<'_, DbState>,
     args: OrchestrateArgs,
 ) -> Result<OrchestrateResult, String> {
@@ -162,30 +177,36 @@ pub fn orchestrate(
         reasoning: Some(settings.reasoning_effort.clone()).filter(|r| !r.is_empty()),
         extra_args: vec![],
         env: HashMap::new(),
+        // Keep text/final blob mode so Plan JSON can be parsed from stdout.
+        stream_output: false,
     };
 
-    let cancel = CancelToken::new();
-    let mut stdout_buf = String::new();
-    let mut stderr_buf = String::new();
-    let run_result = run_engine_unchecked(&req, &cancel, |ev: LogEvent| {
-        if ev.stream == "stdout" {
-            if !stdout_buf.is_empty() {
-                stdout_buf.push('\n');
+    let (run_result, raw) = tauri::async_runtime::spawn_blocking(move || {
+        let cancel = CancelToken::new();
+        let mut stdout_buf = String::new();
+        let mut stderr_buf = String::new();
+        let run_result = run_engine_unchecked(&req, &cancel, None, |ev: LogEvent| {
+            if ev.stream == "stdout" {
+                if !stdout_buf.is_empty() {
+                    stdout_buf.push('\n');
+                }
+                stdout_buf.push_str(&ev.line);
+            } else {
+                if !stderr_buf.is_empty() {
+                    stderr_buf.push('\n');
+                }
+                stderr_buf.push_str(&ev.line);
             }
-            stdout_buf.push_str(&ev.line);
+        });
+        let raw = if stdout_buf.trim().is_empty() {
+            stderr_buf
         } else {
-            if !stderr_buf.is_empty() {
-                stderr_buf.push('\n');
-            }
-            stderr_buf.push_str(&ev.line);
-        }
-    });
-
-    let raw = if stdout_buf.trim().is_empty() {
-        stderr_buf.clone()
-    } else {
-        stdout_buf.clone()
-    };
+            stdout_buf
+        };
+        (run_result, raw)
+    })
+    .await
+    .map_err(|e| format!("orchestrate join error: {e}"))?;
 
     match run_result {
         Ok(code) if code != 0 => {
@@ -221,4 +242,56 @@ pub fn orchestrate(
         validated.warnings,
         Some(raw),
     )
+}
+
+/// Merge clarifying answers into the plan, then dispatch + start.
+#[tauri::command]
+pub fn confirm_plan_answers(
+    app: AppHandle,
+    state: State<'_, DbState>,
+    runs: State<'_, RunState>,
+    args: ConfirmPlanAnswersArgs,
+) -> Result<ConfirmPlanAnswersResult, String> {
+    let plan_id = args.plan_id.trim().to_string();
+    if plan_id.is_empty() {
+        return Err("plan_id must not be empty".into());
+    }
+
+    let merged_plan = {
+        let conn = state
+            .conn
+            .lock()
+            .map_err(|e| format!("db lock poisoned: {e}"))?;
+        let row = get_plan(&conn, &plan_id)?.ok_or_else(|| format!("plan not found: {plan_id}"))?;
+        let analysis = parse_plan_json(&row.analysis_json)
+            .map_err(|e| format!("stored plan JSON invalid: {e}"))?;
+        let merged = apply_clarifications(analysis, &args.answers)?;
+        let validated = validate_plan(&conn, merged)?;
+        let json = plan_to_analysis_json(&validated.plan)?;
+        let _ = update_plan_analysis(&conn, &plan_id, &json)?;
+        validated.plan
+    };
+
+    let dispatch = {
+        let conn = state
+            .conn
+            .lock()
+            .map_err(|e| format!("db lock poisoned: {e}"))?;
+        svc_dispatch(&conn, &plan_id)?
+    };
+
+    let started = crate::commands::tasks::start_run(
+        app,
+        state,
+        runs,
+        dispatch.run.id.clone(),
+        None,
+    )?
+    .started;
+
+    Ok(ConfirmPlanAnswersResult {
+        plan: merged_plan,
+        dispatch,
+        started,
+    })
 }

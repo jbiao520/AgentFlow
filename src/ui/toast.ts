@@ -51,10 +51,10 @@ export function formatActionableError(raw: string): string {
       lower.includes("no such file") ||
       lower.includes("command"))
   ) {
-    return `${msg} — 请安装对应 CLI，或在侧栏点「刷新」探测引擎。`;
+    return `${msg} — 请安装对应 CLI，或点击侧栏左下角状态刷新探测。`;
   }
   if (lower.includes("unavailable") || lower.includes("not available")) {
-    return `${msg} — CLI 不可用：安装后点击侧栏刷新探测。`;
+    return `${msg} — CLI 不可用：安装后点击侧栏左下角状态刷新探测。`;
   }
   if (
     lower.includes("json") ||

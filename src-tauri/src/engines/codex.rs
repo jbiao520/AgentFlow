@@ -13,7 +13,14 @@ pub fn prepare(req: &EngineRunRequest) -> Result<PreparedCommand, String> {
         "-C".to_string(),
         req.cwd.clone(),
         "--skip-git-repo-check".to_string(),
+        // Full permissions for non-interactive automation. AgentMind already
+        // constrains cwd to the agent workspace (external sandbox).
+        "--dangerously-bypass-approvals-and-sandbox".to_string(),
     ];
+
+    if req.stream_output {
+        args.push("--json".to_string());
+    }
 
     if let Some(model) = req.model.as_ref().filter(|m| !m.trim().is_empty()) {
         args.push("-m".to_string());
@@ -47,15 +54,40 @@ mod tests {
             reasoning: None,
             extra_args: vec![],
             env: HashMap::new(),
+            stream_output: false,
         };
         match prepare(&req) {
             Ok(cmd) => {
                 assert_eq!(cmd.args.first().map(String::as_str), Some("exec"));
                 assert!(cmd.args.windows(2).any(|w| w[0] == "-C" && w[1] == "/tmp/ws"));
+                assert!(cmd
+                    .args
+                    .iter()
+                    .any(|a| a == "--dangerously-bypass-approvals-and-sandbox"));
+                assert!(!cmd.args.iter().any(|a| a == "--sandbox"));
+                assert!(!cmd.args.iter().any(|a| a == "--ask-for-approval"));
+                assert!(!cmd.args.iter().any(|a| a == "--json"));
                 assert!(cmd.args.windows(2).any(|w| w[0] == "-m" && w[1] == "sol"));
                 assert_eq!(cmd.args.last().map(String::as_str), Some("ping"));
             }
             Err(e) => assert!(e.contains("CLI not found")),
+        }
+    }
+
+    #[test]
+    fn stream_mode_adds_json() {
+        let req = EngineRunRequest {
+            engine: "codex".into(),
+            cwd: "/tmp/ws".into(),
+            prompt: "ping".into(),
+            model: None,
+            reasoning: None,
+            extra_args: vec![],
+            env: HashMap::new(),
+            stream_output: true,
+        };
+        if let Ok(cmd) = prepare(&req) {
+            assert!(cmd.args.iter().any(|a| a == "--json"));
         }
     }
 }

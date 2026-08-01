@@ -5,18 +5,37 @@ use rusqlite::Connection;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Probe cursor-agent / codex / opencode; persist results. Never panics on missing CLIs.
 pub fn probe_cli_engines(conn: &Connection) -> Result<Vec<EngineStatus>, String> {
-    let mut out = Vec::with_capacity(ENGINE_NAMES.len());
-    for name in ENGINE_NAMES {
-        let status = probe_one(name);
+    // Probe in parallel — sequential --version can take up to 9s and feels like a no-op refresh.
+    let handles: Vec<_> = ENGINE_NAMES
+        .iter()
+        .map(|name| {
+            let engine = (*name).to_string();
+            thread::spawn(move || probe_one(&engine))
+        })
+        .collect();
+
+    let mut probed = Vec::with_capacity(ENGINE_NAMES.len());
+    for handle in handles {
+        match handle.join() {
+            Ok(status) => probed.push(status),
+            Err(_) => {
+                return Err("CLI probe thread panicked".into());
+            }
+        }
+    }
+
+    let mut out = Vec::with_capacity(probed.len());
+    for status in probed {
         let persisted = upsert_cli_engine_status(
             conn,
-            name,
+            &status.engine,
             status.available,
             status.version.as_deref(),
         )?;
@@ -27,20 +46,17 @@ pub fn probe_cli_engines(conn: &Connection) -> Result<Vec<EngineStatus>, String>
 
 fn probe_one(engine: &str) -> EngineStatus {
     match resolve_binary(engine) {
-        Some(bin) => match run_version(&bin) {
-            Ok(version) => EngineStatus {
+        Some(bin) => {
+            // Binary found ⇒ available. Version is best-effort; a flaky --version
+            // must not mark an installed CLI as offline (that made refresh look broken).
+            let version = run_version(&bin).ok();
+            EngineStatus {
                 engine: engine.to_string(),
                 available: true,
-                version: Some(version),
+                version,
                 last_checked_at: None,
-            },
-            Err(_) => EngineStatus {
-                engine: engine.to_string(),
-                available: false,
-                version: None,
-                last_checked_at: None,
-            },
-        },
+            }
+        }
         None => EngineStatus {
             engine: engine.to_string(),
             available: false,

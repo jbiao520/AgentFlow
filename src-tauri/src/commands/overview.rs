@@ -69,17 +69,16 @@ fn today_prefix() -> String {
     now_iso8601().chars().take(10).collect()
 }
 
-fn is_healthy(status: &str) -> bool {
-    matches!(
-        status.to_lowercase().as_str(),
-        "idle" | "working" | "running"
-    )
+fn is_agent_healthy(agent: &Agent) -> bool {
+    let ws_ok = std::path::Path::new(&agent.workspace_path).is_dir();
+    let cli_ok = crate::services::cli_probe::resolve_engine_binary(&agent.default_cli).is_some();
+    ws_ok && cli_ok
 }
 
 pub fn compute_overview_stats(conn: &Connection) -> Result<OverviewStats, String> {
     let agents = list_agents(conn)?;
     let agent_count = agents.len() as i64;
-    let healthy = agents.iter().filter(|a| is_healthy(&a.status)).count() as i64;
+    let healthy = agents.iter().filter(|a| is_agent_healthy(a)).count() as i64;
     let agents_healthy_pct = if agent_count == 0 {
         100.0
     } else {
@@ -526,6 +525,9 @@ mod tests {
     fn overview_stats_counts_with_fixture_db() {
         let dir = TempDir::new().unwrap();
         let conn = open_db_at(&dir.path().join("t.db")).unwrap();
+        let ws_ok = dir.path().join("ws-ok");
+        let ws_bad = dir.path().join("ws-missing-never");
+        std::fs::create_dir_all(&ws_ok).unwrap();
 
         upsert_agent(
             &conn,
@@ -533,7 +535,7 @@ mod tests {
                 id: None,
                 name: "alpha".into(),
                 description: None,
-                workspace_path: "/tmp/a".into(),
+                workspace_path: ws_ok.to_string_lossy().into(),
                 git_url: None,
                 default_cli: "codex".into(),
                 status: Some("idle".into()),
@@ -546,7 +548,7 @@ mod tests {
                 id: None,
                 name: "beta".into(),
                 description: None,
-                workspace_path: "/tmp/b".into(),
+                workspace_path: ws_bad.to_string_lossy().into(),
                 git_url: None,
                 default_cli: "cursor-agent".into(),
                 status: Some("error".into()),
@@ -566,7 +568,15 @@ mod tests {
 
         let stats = compute_overview_stats(&conn).unwrap();
         assert_eq!(stats.agent_count, 2);
-        assert!((stats.agents_healthy_pct - 50.0).abs() < 0.01);
+        // Health = workspace dir exists AND CLI binary resolvable.
+        let alpha_healthy = crate::services::cli_probe::resolve_engine_binary("codex").is_some();
+        let expected_pct = if alpha_healthy { 50.0 } else { 0.0 };
+        assert!(
+            (stats.agents_healthy_pct - expected_pct).abs() < 0.01,
+            "got {} expected {}",
+            stats.agents_healthy_pct,
+            expected_pct
+        );
         assert_eq!(stats.running_tasks, 1);
         assert_eq!(stats.completed_today, 1);
         assert!((stats.success_rate_today - 100.0).abs() < 0.01);

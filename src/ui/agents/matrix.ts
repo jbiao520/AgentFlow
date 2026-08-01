@@ -136,6 +136,10 @@ export async function refreshAgentMatrix(): Promise<void> {
   }
 
   const cachedAgents = getCachedAgents();
+  const agentsEl = document.getElementById("nav-count-agents");
+  const overviewEl = document.getElementById("nav-count-overview");
+  if (agentsEl) agentsEl.textContent = String(cachedAgents.length);
+  if (overviewEl) overviewEl.textContent = String(cachedAgents.length);
 
   if (cachedAgents.length === 0) {
     grid.innerHTML = `

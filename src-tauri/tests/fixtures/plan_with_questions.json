@@ -1,0 +1,32 @@
+{
+  "intent": {
+    "summary": "Build a mobile app for task tracking",
+    "tags": ["mobile", "product"]
+  },
+  "subtasks": [
+    {
+      "id": "t1",
+      "title": "Draft product brief",
+      "agent": "web-ops",
+      "skills": ["web-crawler.md"],
+      "depends_on": [],
+      "cli_engine": "codex",
+      "model": "sol",
+      "reasoning_effort": "medium",
+      "prompt": "Write a short product brief based on the goal and clarifications.",
+      "artifact_paths": ["brief.md"]
+    }
+  ],
+  "questions": [
+    {
+      "id": "q1",
+      "prompt": "目标平台是？",
+      "options": ["iOS", "Android", "双端"]
+    },
+    {
+      "id": "q2",
+      "prompt": "优先交付范围？",
+      "options": ["MVP 核心流程", "完整功能", "仅原型"]
+    }
+  ]
+}

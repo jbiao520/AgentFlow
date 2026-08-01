@@ -3,10 +3,14 @@
  */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
+  cancelRun,
+  clearTaskRuns,
+  deleteTaskRun,
   getTaskRun,
   listTaskLogs,
   listTaskRuns,
   readWorkspaceFile,
+  revealWorkspaceArtifact,
   retryNode,
   skipNode,
   type TaskLog,
@@ -15,6 +19,7 @@ import {
   type TaskRun,
   type TaskRunUpdatedEvent,
 } from "../../lib/api/tasks";
+import { showView } from "../router";
 import { renderDag } from "./dag";
 import {
   appendLogLine,
@@ -25,6 +30,7 @@ import {
   renderLogTabs,
 } from "./logs";
 import { showToast } from "../toast";
+import { confirmAction } from "../modals";
 
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -37,7 +43,17 @@ type CenterState = {
   selectedNodeId: string | null;
   logFilter: string;
   streamPaused: boolean;
+  artifactPaths: string[];
+  selectedArtifactPath: string | null;
+  artifactAgentId: string | null;
   artifactContent: string;
+  artifactMissing: boolean;
+  cancelling: boolean;
+  /** Run ids deleted locally — ignore stale task-run-updated resurrection. */
+  deletedRunIds: Set<string>;
+  /** Monotonic generation used to ignore stale history list responses. */
+  historyRefreshGeneration: number;
+  historyBound: boolean;
   unsubs: UnlistenFn[];
 };
 
@@ -48,9 +64,24 @@ const state: CenterState = {
   selectedNodeId: null,
   logFilter: "all",
   streamPaused: false,
+  artifactPaths: [],
+  selectedArtifactPath: null,
+  artifactAgentId: null,
   artifactContent: "",
+  artifactMissing: false,
+  cancelling: false,
+  deletedRunIds: new Set(),
+  historyRefreshGeneration: 0,
+  historyBound: false,
   unsubs: [],
 };
+
+function eventElement(ev: Event): Element | null {
+  const t = ev.target;
+  if (t instanceof Element) return t;
+  if (t instanceof Text) return t.parentElement;
+  return null;
+}
 
 function escapeHtml(s: string): string {
   return s
@@ -77,11 +108,166 @@ function statusMeta(run: TaskRun): { label: string; color: string } {
   }
 }
 
+function parseArtifactPaths(node: TaskNode | undefined): string[] {
+  if (!node?.artifact_paths_json) return [];
+  try {
+    const parsed = JSON.parse(node.artifact_paths_json) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((p): p is string => typeof p === "string")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function renderArtifactList(): void {
+  const list = document.getElementById("artifact-path-list");
+  if (!list) return;
+
+  if (!state.artifactPaths.length) {
+    list.innerHTML =
+      '<div class="artifact-path-empty">该节点暂无产物路径</div>';
+    return;
+  }
+
+  list.innerHTML = state.artifactPaths
+    .map((path) => {
+      const active = path === state.selectedArtifactPath ? " active" : "";
+      const missing =
+        path === state.selectedArtifactPath && state.artifactMissing
+          ? " missing"
+          : "";
+      const missingTag =
+        path === state.selectedArtifactPath && state.artifactMissing
+          ? ' <span style="opacity:0.75;">(缺失)</span>'
+          : "";
+      return `<button type="button" class="artifact-path-item${active}${missing}" role="option" data-artifact-path="${escapeHtml(path)}" aria-selected="${path === state.selectedArtifactPath}">${escapeHtml(path)}${missingTag}</button>`;
+    })
+    .join("");
+
+  list.querySelectorAll("[data-artifact-path]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const path = (el as HTMLElement).getAttribute("data-artifact-path");
+      if (path) void selectArtifactPath(path);
+    });
+  });
+}
+
+function clearArtifactPanel(message: string): void {
+  state.artifactPaths = [];
+  state.selectedArtifactPath = null;
+  state.artifactAgentId = null;
+  state.artifactContent = "";
+  state.artifactMissing = false;
+  const label = document.getElementById("artifact-path-label");
+  const box = document.getElementById("artifact-content-box");
+  const list = document.getElementById("artifact-path-list");
+  if (label) label.textContent = "—";
+  if (box) box.textContent = message;
+  if (list) {
+    list.innerHTML = `<div class="artifact-path-empty">${escapeHtml(message)}</div>`;
+  }
+}
+
+async function selectArtifactPath(relPath: string): Promise<void> {
+  state.selectedArtifactPath = relPath;
+  state.artifactContent = "";
+  state.artifactMissing = false;
+
+  const label = document.getElementById("artifact-path-label");
+  const box = document.getElementById("artifact-content-box");
+  if (label) label.textContent = relPath;
+  if (box) box.textContent = "加载中…";
+  renderArtifactList();
+
+  if (!state.artifactAgentId) {
+    state.artifactMissing = true;
+    if (box) box.textContent = "无法读取产物: 节点未绑定 Agent";
+    renderArtifactList();
+    return;
+  }
+
+  try {
+    const file = await readWorkspaceFile(state.artifactAgentId, relPath);
+    state.artifactContent = file.content;
+    state.artifactMissing = false;
+    if (box) box.textContent = file.content;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    state.artifactContent = "";
+    state.artifactMissing = true;
+    if (box) {
+      box.textContent = `无法读取产物: ${msg}\n\n相对路径: ${relPath}\n可点「在 Finder 中显示」打开 workspace / artifacts 目录。`;
+    }
+  }
+  renderArtifactList();
+}
+
+async function loadArtifactForNode(nodeId: string): Promise<void> {
+  const node = state.nodes.find((n) => n.id === nodeId);
+  if (!node) {
+    clearArtifactPanel("选择 DAG 节点查看产物");
+    return;
+  }
+
+  const paths = parseArtifactPaths(node);
+  state.artifactPaths = paths;
+  state.artifactAgentId = node.agent_id;
+  state.artifactContent = "";
+  state.artifactMissing = false;
+
+  if (!paths.length) {
+    clearArtifactPanel("该节点暂无产物路径");
+    state.artifactAgentId = node.agent_id;
+    return;
+  }
+
+  await selectArtifactPath(paths[0]);
+}
+
+async function onRevealArtifact(): Promise<void> {
+  if (!state.artifactAgentId || !state.selectedArtifactPath) {
+    showToast("请先选择有产物路径的节点");
+    return;
+  }
+  try {
+    const result = await revealWorkspaceArtifact(
+      state.artifactAgentId,
+      state.selectedArtifactPath,
+    );
+    if (result.existed) {
+      showToast("已在 Finder 中定位产物文件");
+    } else if (result.fallback) {
+      showToast(`文件尚不存在，已打开目录：${result.revealed_path}`);
+    } else {
+      showToast("已在 Finder 中显示");
+    }
+  } catch (e) {
+    showToast(
+      `打开 Finder 失败: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
 function renderHistory(): void {
   const list = document.getElementById("task-history-list");
   const count = document.getElementById("task-history-count");
+  const clearBtn = document.getElementById(
+    "btn-clear-task-history",
+  ) as HTMLButtonElement | null;
   if (count) count.textContent = `共 ${state.runs.length} 个`;
+  if (clearBtn) clearBtn.disabled = state.runs.length === 0;
+  const running = state.runs.filter(
+    (r) => r.status === "running" || r.status === "queued",
+  ).length;
+  // Agent count is owned by overview/matrix; only refresh the running badge here.
+  const tasksBadge = document.getElementById("nav-count-tasks");
+  if (tasksBadge) tasksBadge.textContent = `${running} 运行`;
+  syncCancelButton();
   if (!list) return;
+  bindHistoryListOnce(list);
   if (state.runs.length === 0) {
     list.innerHTML = `
       <div style="padding:16px 12px; font-size:12px; color:var(--fg-muted); text-align:center;">
@@ -103,7 +289,10 @@ function renderHistory(): void {
         ? new Date(run.started_at).toLocaleString()
         : "—";
       return `<div class="task-item-card${active}" data-run-id="${escapeHtml(run.id)}">
-        <div class="task-item-title">${escapeHtml(title)}</div>
+        <div class="task-item-top">
+          <div class="task-item-title">${escapeHtml(title)}</div>
+          <button type="button" class="task-item-delete" data-delete-run="${escapeHtml(run.id)}" title="删除此任务" aria-label="删除此任务">删除</button>
+        </div>
         <div class="task-item-meta">
           <span style="color:${meta.color};">${escapeHtml(meta.label)}</span>
           <span>${escapeHtml(started)}</span>
@@ -111,13 +300,37 @@ function renderHistory(): void {
       </div>`;
     })
     .join("");
+}
 
-  list.querySelectorAll("[data-run-id]").forEach((el) => {
-    el.addEventListener("click", () => {
-      const id = (el as HTMLElement).getAttribute("data-run-id");
-      if (id) void selectRun(id);
-    });
-  });
+/** Stable delegation — survives innerHTML re-renders from task-run-updated. */
+function bindHistoryListOnce(list: HTMLElement): void {
+  if (state.historyBound) return;
+  state.historyBound = true;
+
+  list.addEventListener(
+    "click",
+    (ev) => {
+      const el = eventElement(ev);
+      if (!el || !list.contains(el)) return;
+
+      const deleteBtn = el.closest("[data-delete-run]");
+      if (deleteBtn instanceof HTMLElement && list.contains(deleteBtn)) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const id = deleteBtn.getAttribute("data-delete-run");
+        if (id) void onDeleteRun(id);
+        return;
+      }
+
+      const card = el.closest("[data-run-id]");
+      if (card instanceof HTMLElement && list.contains(card)) {
+        if (el.closest("[data-delete-run]")) return;
+        const id = card.getAttribute("data-run-id");
+        if (id) void selectRun(id);
+      }
+    },
+    true,
+  );
 }
 
 function renderDagPanel(): void {
@@ -130,47 +343,25 @@ function renderDagPanel(): void {
   });
 }
 
-async function loadArtifactForNode(nodeId: string): Promise<void> {
-  const node = state.nodes.find((n) => n.id === nodeId);
-  const label = document.getElementById("artifact-path-label");
-  const box = document.getElementById("artifact-content-box");
-  if (!node) return;
+async function selectRun(
+  runId: string,
+  expectedRefreshGeneration?: number,
+): Promise<void> {
+  const isCurrentRefresh = (): boolean =>
+    expectedRefreshGeneration === undefined ||
+    expectedRefreshGeneration === state.historyRefreshGeneration;
 
-  let paths: string[] = [];
-  try {
-    paths = node.artifact_paths_json
-      ? (JSON.parse(node.artifact_paths_json) as string[])
-      : [];
-  } catch {
-    paths = [];
-  }
-
-  if (!paths.length || !node.agent_id) {
-    if (label) label.textContent = "—";
-    if (box) box.textContent = "该节点暂无产物路径";
-    state.artifactContent = "";
-    return;
-  }
-
-  const rel = paths[0];
-  if (label) label.textContent = rel;
-  try {
-    const file = await readWorkspaceFile(node.agent_id, rel);
-    state.artifactContent = file.content;
-    if (box) box.textContent = file.content;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    state.artifactContent = "";
-    if (box) box.textContent = `无法读取产物: ${msg}`;
-  }
-}
-
-async function selectRun(runId: string): Promise<void> {
+  if (!isCurrentRefresh()) return;
   state.selectedRunId = runId;
   state.logFilter = "all";
+  if (state.cancelling) {
+    // keep cancelling flag only while the same run is still active
+  }
   renderHistory();
+  syncCancelButton();
   try {
     const full = await getTaskRun(runId);
+    if (!isCurrentRefresh()) return;
     if (!full) {
       showToast("Run 不存在");
       return;
@@ -183,6 +374,7 @@ async function selectRun(runId: string): Promise<void> {
     renderDagPanel();
 
     const logs = await listTaskLogs(runId);
+    if (!isCurrentRefresh()) return;
     const agents = [
       ...new Set(
         logs
@@ -202,6 +394,8 @@ async function selectRun(runId: string): Promise<void> {
 
     if (state.selectedNodeId) {
       await loadArtifactForNode(state.selectedNodeId);
+    } else {
+      clearArtifactPanel("选择 DAG 节点查看产物");
     }
   } catch (e) {
     showToast(`加载 Run 失败: ${e instanceof Error ? e.message : String(e)}`);
@@ -209,19 +403,179 @@ async function selectRun(runId: string): Promise<void> {
 }
 
 export async function refreshTaskHistory(preferRunId?: string): Promise<void> {
+  const generation = ++state.historyRefreshGeneration;
   try {
-    state.runs = await listTaskRuns(50);
+    const runs = await listTaskRuns(50);
+    if (generation !== state.historyRefreshGeneration) return;
+    state.runs = runs.filter((run) => !state.deletedRunIds.has(run.id));
     renderHistory();
     const pick =
       preferRunId ||
       state.selectedRunId ||
       state.runs[0]?.id ||
       null;
-    if (pick) await selectRun(pick);
+    if (pick && state.runs.some((r) => r.id === pick)) {
+      await selectRun(pick, generation);
+    } else if (state.runs[0]) {
+      await selectRun(state.runs[0].id, generation);
+    } else {
+      clearRunDetail();
+    }
   } catch (e) {
+    if (generation !== state.historyRefreshGeneration) return;
     showToast(
       `加载任务历史失败: ${e instanceof Error ? e.message : String(e)}`,
     );
+  }
+}
+
+function clearRunDetail(): void {
+  state.selectedRunId = null;
+  state.nodes = [];
+  state.selectedNodeId = null;
+  state.cancelling = false;
+  renderHistory();
+  renderDagPanel();
+  clearLogBody();
+  clearArtifactPanel("选择任务查看产物");
+  syncCancelButton();
+}
+
+async function onDeleteRun(runId: string): Promise<void> {
+  if (state.deletedRunIds.has(runId)) return;
+
+  const run = state.runs.find((r) => r.id === runId);
+  const label = `#${runId.slice(0, 8)}`;
+  const active =
+    run && (run.status === "running" || run.status === "queued");
+  const msg = active
+    ? `任务 ${label} 仍在执行，删除将取消并清除记录。确定？`
+    : `确定删除任务 ${label}？节点与日志将一并清除。`;
+  try {
+    const confirmed = await confirmAction(msg, {
+      title: "删除执行历史",
+      confirmLabel: "删除",
+    });
+    if (!confirmed) return;
+    const refreshGenerationAtDelete = state.historyRefreshGeneration;
+    state.deletedRunIds.add(runId);
+    await deleteTaskRun(runId);
+    // Invalidate requests started before deletion, while preserving any
+    // newer request that began while the delete IPC was in flight.
+    if (state.historyRefreshGeneration === refreshGenerationAtDelete) {
+      state.historyRefreshGeneration += 1;
+    }
+    const wasSelected = state.selectedRunId === runId;
+    state.runs = state.runs.filter((r) => r.id !== runId);
+    if (wasSelected) {
+      const next = state.runs[0]?.id;
+      if (next) await selectRun(next);
+      else clearRunDetail();
+    } else {
+      renderHistory();
+    }
+    showToast(`已删除 ${label}`);
+  } catch (e) {
+    state.deletedRunIds.delete(runId);
+    showToast(`删除失败: ${e instanceof Error ? e.message : String(e)}`, {
+      kind: "error",
+    });
+  }
+}
+
+async function onClearHistory(): Promise<void> {
+  if (state.runs.length === 0) {
+    showToast("暂无执行历史");
+    return;
+  }
+  const n = state.runs.length;
+  let refreshGenerationAtClear: number | null = null;
+  try {
+    const confirmed = await confirmAction(
+      `确定清空全部 ${n} 条执行历史？进行中的任务也会被取消并删除。`,
+      { title: "清空执行历史", confirmLabel: "全部清空" },
+    );
+    if (!confirmed) return;
+    refreshGenerationAtClear = state.historyRefreshGeneration;
+    for (const r of state.runs) state.deletedRunIds.add(r.id);
+    const deleted = await clearTaskRuns();
+    if (
+      refreshGenerationAtClear !== null &&
+      state.historyRefreshGeneration === refreshGenerationAtClear
+    ) {
+      state.historyRefreshGeneration += 1;
+    }
+    state.runs = [];
+    clearRunDetail();
+    showToast(`已清空 ${deleted} 条执行历史`);
+  } catch (e) {
+    // Allow retries if clear failed.
+    state.deletedRunIds.clear();
+    if (state.historyRefreshGeneration === refreshGenerationAtClear) {
+      await refreshTaskHistory(state.selectedRunId || undefined);
+    }
+    showToast(`清空失败: ${e instanceof Error ? e.message : String(e)}`, {
+      kind: "error",
+    });
+  }
+}
+
+/** Navigate to Task Center and select a specific run (history + DAG + logs). */
+export async function openTaskRun(runId: string): Promise<void> {
+  showView("tasks");
+  await refreshTaskHistory(runId);
+}
+
+function syncCancelButton(): void {
+  const btn = document.getElementById(
+    "btn-cancel-run",
+  ) as HTMLButtonElement | null;
+  if (!btn) return;
+  const run = state.runs.find((r) => r.id === state.selectedRunId);
+  const active =
+    !!run && (run.status === "running" || run.status === "queued");
+  if (state.cancelling && active) {
+    btn.disabled = true;
+    btn.textContent = "取消中…";
+  } else if (state.cancelling && !active) {
+    state.cancelling = false;
+    btn.disabled = !active;
+    btn.textContent = "取消任务";
+  } else {
+    btn.disabled = !active;
+    btn.textContent = "取消任务";
+  }
+}
+
+async function onCancelRun(): Promise<void> {
+  if (!state.selectedRunId) {
+    showToast("请先选择要取消的任务");
+    return;
+  }
+  const run = state.runs.find((r) => r.id === state.selectedRunId);
+  if (!run || (run.status !== "running" && run.status !== "queued")) {
+    showToast("只能取消排队中或执行中的任务");
+    return;
+  }
+  const runId = run.id;
+  try {
+    const confirmed = await confirmAction(
+      `确认取消任务 #${runId.slice(0, 8)}？\n正在执行的节点将被终止，未开始的节点将标记为跳过。`,
+      {
+        title: "取消执行任务",
+        confirmLabel: "确认取消",
+      },
+    );
+    if (!confirmed) return;
+    state.cancelling = true;
+    syncCancelButton();
+    await cancelRun(runId);
+    showToast("已请求取消任务");
+    await selectRun(runId);
+  } catch (e) {
+    state.cancelling = false;
+    syncCancelButton();
+    showToast(`取消失败: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 
@@ -281,13 +635,28 @@ async function subscribeEvents(): Promise<void> {
 
   const u2 = await listen<TaskRunUpdatedEvent>("task-run-updated", (ev) => {
     const run = ev.payload.run;
+    // Deleting a live run cancels the runner; a late emit must not resurrect it.
+    if (state.deletedRunIds.has(run.id)) return;
+
     const idx = state.runs.findIndex((r) => r.id === run.id);
     if (idx >= 0) state.runs[idx] = run;
     else state.runs.unshift(run);
+    if (
+      state.cancelling &&
+      run.id === state.selectedRunId &&
+      (run.status === "cancelled" ||
+        run.status === "failed" ||
+        run.status === "success")
+    ) {
+      state.cancelling = false;
+    }
     renderHistory();
     if (run.id === state.selectedRunId) {
       state.nodes = ev.payload.nodes;
       renderDagPanel();
+      if (state.selectedNodeId) {
+        void loadArtifactForNode(state.selectedNodeId);
+      }
     }
   });
 
@@ -304,6 +673,34 @@ export function initTaskCenter(): void {
   document.getElementById("btn-skip-node")?.addEventListener("click", () => {
     void onSkip();
   });
+  document.getElementById("btn-cancel-run")?.addEventListener("click", () => {
+    void onCancelRun();
+  });
+  document
+    .getElementById("btn-save-run-template")
+    ?.addEventListener("click", () => {
+      if (!state.selectedRunId) {
+        showToast("请先选择一个任务", { kind: "error" });
+        return;
+      }
+      const run = state.runs.find((r) => r.id === state.selectedRunId);
+      if (!run) {
+        showToast("未找到选中任务", { kind: "error" });
+        return;
+      }
+      void import("../templates/save-wizard").then((m) =>
+        m.openSaveTemplateWizard({
+          runId: run.id,
+          goalId: run.goal_id,
+          planId: run.plan_id,
+        }),
+      );
+    });
+  document
+    .getElementById("btn-clear-task-history")
+    ?.addEventListener("click", () => {
+      void onClearHistory();
+    });
   document.getElementById("clear-logs-btn")?.addEventListener("click", () => {
     clearLogBody();
     showToast("终端日志已清空");
@@ -316,7 +713,7 @@ export function initTaskCenter(): void {
   });
   document.getElementById("btn-copy-artifact")?.addEventListener("click", () => {
     if (!state.artifactContent) {
-      showToast("无产物可复制");
+      showToast(state.artifactMissing ? "产物文件缺失，无法复制" : "无产物可复制");
       return;
     }
     void navigator.clipboard.writeText(state.artifactContent).then(
@@ -324,6 +721,11 @@ export function initTaskCenter(): void {
       () => showToast("复制失败"),
     );
   });
+  document
+    .getElementById("btn-reveal-artifact")
+    ?.addEventListener("click", () => {
+      void onRevealArtifact();
+    });
   document.getElementById("toggle-stream-btn")?.addEventListener("click", () => {
     state.streamPaused = !state.streamPaused;
     const btn = document.getElementById("toggle-stream-btn");

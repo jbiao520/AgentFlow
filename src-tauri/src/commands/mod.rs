@@ -4,6 +4,8 @@ pub mod db;
 pub mod orchestrate;
 pub mod overview;
 pub mod sandbox;
+pub mod schedules;
 pub mod settings;
 pub mod system;
 pub mod tasks;
+pub mod templates;

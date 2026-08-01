@@ -2,6 +2,7 @@ use crate::db::path::db_path;
 use crate::repo::{
     get_agent_profile, upsert_agent, upsert_agent_profile, Agent, AgentModelProfile, AgentUpsert,
 };
+use crate::services::skill_scan::{sync_agent_skills, SyncSkillsResult};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -21,6 +22,9 @@ pub struct ImportAgentResult {
     pub agent: Agent,
     pub cloned: bool,
     pub workspace_path: String,
+    /// Present when skill sync succeeded; absent/None fields when sync failed.
+    pub skills_synced: Option<SyncSkillsResult>,
+    pub skills_sync_error: Option<String>,
 }
 
 /// Application Support workspaces root: `…/AgentMind/workspaces`
@@ -238,15 +242,22 @@ pub fn import_agent(conn: &Connection, req: ImportAgentRequest) -> Result<Import
                 reasoning_effort: Some("medium".into()),
                 temperature: Some(0.2),
                 auto_route: true,
-                engine_options_json: Some(r#"{"playwright_mode":"headless"}"#.into()),
+                engine_options_json: Some("{}".into()),
             },
         )?;
     }
+
+    let (skills_synced, skills_sync_error) = match sync_agent_skills(conn, &agent.id) {
+        Ok(r) => (Some(r), None),
+        Err(e) => (None, Some(e)),
+    };
 
     Ok(ImportAgentResult {
         agent,
         cloned,
         workspace_path: workspace_str,
+        skills_synced,
+        skills_sync_error,
     })
 }
 

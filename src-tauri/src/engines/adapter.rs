@@ -13,13 +13,18 @@ pub struct EngineRunRequest {
     pub extra_args: Vec<String>,
     #[serde(default)]
     pub env: HashMap<String, String>,
+    /// Prefer JSONL streaming output so the UI can show live agent text.
+    /// Orchestrate keeps this false (needs a single final text/JSON blob).
+    #[serde(default)]
+    pub stream_output: bool,
 }
 
 /// One streamed log line from a child process.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEvent {
     pub ts: String,
-    pub stream: String, // "stdout" | "stderr"
+    /// `stdout` | `stderr` | `agent` | `think` | `status` | `tool`
+    pub stream: String,
     pub line: String,
 }
 

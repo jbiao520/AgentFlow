@@ -3,7 +3,9 @@ pub mod path;
 
 use rusqlite::Connection;
 
-pub use migrate::{migrate, now_iso8601};
+pub use migrate::{
+    format_unix_as_iso8601, migrate, now_iso8601, now_unix, parse_iso8601_unix,
+};
 pub use path::{db_path, ensure_db_dir};
 
 /// Open (or create) the app DB and run migrations.

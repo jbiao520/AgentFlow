@@ -148,6 +148,10 @@ task_logs
 
 cli_engine_status  -- 可缓存探测结果
   engine, available, version, last_checked_at
+
+templates  -- 可复用执行模版（参数化 Goal + Plan）
+  id, name, description, source_goal_id, source_plan_id, source_run_id,
+  goal_prompt, plan_json, variables_json, created_at, updated_at
 ```
 
 说明：日志量大时可按 Run 分文件落盘（`~/Library/Application Support/AgentMind/logs/{run_id}.jsonl`），SQLite 只存索引与摘要。

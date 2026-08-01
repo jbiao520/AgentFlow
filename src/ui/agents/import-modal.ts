@@ -47,7 +47,19 @@ export async function submitImportModal(): Promise<void> {
 
     await refreshAgentMatrix();
     const how = result.cloned ? "已克隆并注册" : "已绑定本地路径";
-    showToast(`${how}: ${result.agent.name}`);
+    if (result.skills_sync_error) {
+      showToast(
+        `${how}: ${result.agent.name}（Skill 扫描失败: ${result.skills_sync_error}）`,
+        { kind: "error", durationMs: 5000 },
+      );
+    } else if (result.skills_synced) {
+      const s = result.skills_synced;
+      showToast(
+        `${how}: ${result.agent.name} · Skill +${s.added}/~${s.updated}/-${s.removed}`,
+      );
+    } else {
+      showToast(`${how}: ${result.agent.name}`);
+    }
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);
     showToast(`导入失败: ${formatActionableError(raw)}`, {

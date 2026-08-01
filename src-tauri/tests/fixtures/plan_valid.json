@@ -1,6 +1,6 @@
 {
   "intent": {
-    "summary": "Scrape competitor pricing with Playwright",
+    "summary": "Scrape competitor pricing",
     "tags": ["web-automation"]
   },
   "subtasks": [
@@ -8,7 +8,7 @@
       "id": "t1",
       "title": "Scrape competitor prices",
       "agent": "web-ops",
-      "skills": ["playwright-crawler.md"],
+      "skills": ["web-crawler.md"],
       "depends_on": [],
       "cli_engine": "codex",
       "model": "sol",

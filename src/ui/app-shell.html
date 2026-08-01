@@ -1,20 +1,10 @@
 <div class="app-window" data-od-id="app-window">
-  <!-- macOS Titlebar -->
+  <!-- Compact top search overlay -->
   <div class="titlebar" data-od-id="app-titlebar">
-    <div class="traffic-lights">
-      <div class="traffic-dot traffic-close" onclick="showToast('macOS Window Minimalized')"></div>
-      <div class="traffic-dot traffic-min" onclick="showToast('macOS Window Standard Mode')"></div>
-      <div class="traffic-dot traffic-max" onclick="showToast('macOS Fullscreen Mode')"></div>
-    </div>
-    
-    <div class="titlebar-center">
-      <span>AgentMind</span>
-      <span class="titlebar-badge">v0.1.0</span>
-    </div>
-
     <div class="titlebar-actions">
-      <div class="cmd-k-trigger" data-od-id="cmd-k-btn" role="button" tabindex="0">
-        <span>搜索 Agent 或快捷触发</span>
+      <div class="cmd-k-trigger" data-od-id="cmd-k-btn" role="button" tabindex="0" title="搜索 Agent 或快捷指令">
+        <svg class="cmd-k-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span>搜索</span>
         <span class="cmd-kbd">⌘K</span>
       </div>
     </div>
@@ -32,26 +22,18 @@
               <span class="nav-icon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
               </span>
-              <span>全局总览</span>
+              <span>Dashboard</span>
             </div>
-            <span class="nav-count">6</span>
+            <span class="nav-count" id="nav-count-overview">0</span>
           </li>
           <li class="nav-item" data-view="agents" data-od-id="nav-agents" role="button" tabindex="0">
             <div class="nav-item-left">
               <span class="nav-icon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M4 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7z"/><circle cx="9" cy="15" r="1"/><circle cx="15" cy="15" r="1"/></svg>
               </span>
-              <span>Agent 矩阵</span>
+              <span>Agents</span>
             </div>
-            <span class="nav-count">6</span>
-          </li>
-          <li class="nav-item" data-view="agent-detail" data-od-id="nav-agent-detail" role="button" tabindex="0">
-            <div class="nav-item-left">
-              <span class="nav-icon">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              </span>
-              <span>Agent 详情配置</span>
-            </div>
+            <span class="nav-count" id="nav-count-agents">0</span>
           </li>
           <li class="nav-item" data-view="commander" data-od-id="nav-commander" role="button" tabindex="0">
             <div class="nav-item-left">
@@ -67,27 +49,37 @@
               <span class="nav-icon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
               </span>
-              <span>任务中心 & DAG</span>
+              <span>任务中心</span>
             </div>
-            <span class="nav-count" style="background: rgba(217,119,6,0.12); color:#b45309;">2 运行</span>
+            <span class="nav-count" id="nav-count-tasks" style="background: rgba(217,119,6,0.12); color:#b45309;">0 运行</span>
+          </li>
+          <li class="nav-item" data-view="templates" data-od-id="nav-templates" role="button" tabindex="0">
+            <div class="nav-item-left">
+              <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              </span>
+              <span>模版库</span>
+            </div>
+            <span class="nav-count" id="nav-count-templates">0</span>
+          </li>
+          <li class="nav-item" data-view="schedules" data-od-id="nav-schedules" role="button" tabindex="0">
+            <div class="nav-item-left">
+              <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </span>
+              <span>Schedules</span>
+            </div>
+            <span class="nav-count" id="nav-count-schedules">0</span>
           </li>
         </ul>
       </div>
 
-      <!-- CLI Engine Status Widget -->
-      <div class="cli-engine-widget" data-od-id="cli-widget">
-        <div class="cli-widget-header">
-          <span>CLI Engines & Drivers</span>
-          <span style="display:flex;align-items:center;gap:8px;">
-            <span id="cli-active-count" style="color: var(--accent-emerald);">…</span>
-            <button type="button" id="cli-refresh-btn" class="cli-refresh-btn" title="Refresh CLI probe">↻</button>
-          </span>
-        </div>
+      <!-- CLI Engine Status — click to re-probe -->
+      <div class="cli-engine-widget" data-od-id="cli-widget" title="点击刷新 CLI 状态">
         <div id="cli-engine-list">
-          <div class="cli-item">
-            <div class="cli-name"><div class="status-dot offline"></div>probing…</div>
-            <span style="font-size:10px; color:var(--fg-muted); font-family:var(--font-mono);">—</span>
-          </div>
+          <div class="cli-item" data-engine="cursor-agent"><div class="cli-name"><div class="status-dot working"></div>cursor</div></div>
+          <div class="cli-item" data-engine="codex"><div class="cli-name"><div class="status-dot working"></div>codex</div></div>
+          <div class="cli-item" data-engine="opencode"><div class="cli-name"><div class="status-dot working"></div>opencode</div></div>
         </div>
       </div>
     </aside>
@@ -101,7 +93,7 @@
       <div id="view-overview" class="view-pane active" data-od-id="view-overview">
         <div class="page-header">
           <div>
-            <h1 class="page-title">全局总览</h1>
+            <h1 class="page-title">Dashboard</h1>
             <p class="page-desc">掌控个人 AI 执行系统的 Agent 指标、协同拓扑与自动化调度队列。</p>
           </div>
           <button class="btn btn-primary" onclick="switchView('commander', document.querySelector('[data-od-id=nav-commander]'))" data-od-id="overview-new-task-btn">
@@ -112,7 +104,7 @@
         <!-- Sleek Segmented Stats Panel -->
         <div class="stats-bar" data-od-id="overview-stats">
           <div class="stat-item">
-            <div class="stat-label">注册 Agent 矩阵</div>
+            <div class="stat-label">注册 Agents</div>
             <div class="stat-value" id="overview-stat-agents">—</div>
             <div class="stat-sub" id="overview-stat-agents-sub">
               <span class="status-dot" style="background:var(--accent-emerald);"></span> —
@@ -181,8 +173,8 @@
       <div id="view-agents" class="view-pane" data-od-id="view-agents">
         <div class="page-header">
           <div>
-            <h1 class="page-title">Agent 矩阵</h1>
-            <p class="page-desc">每个 Agent 绑定一个工作区 Workspace，技能从工作区内部配置自动感知。</p>
+            <h1 class="page-title">Agents</h1>
+            <p class="page-desc">每个 Agent 绑定一个工作区 Workspace，技能从工作区内部配置自动感知。点击卡片进入详情配置。</p>
           </div>
           <button class="btn btn-primary" onclick="openImportModal()">
             <span>导入/新建 Agent 工作区</span>
@@ -199,7 +191,7 @@
           </select>
           <select id="agent-cli-filter" class="form-select" style="width:170px;" onchange="filterAgents()">
             <option value="all">所有 CLI 引擎</option>
-            <option value="cursor-agent">Cursor Agent (Playwright)</option>
+            <option value="cursor-agent">Cursor Agent</option>
             <option value="codex">Codex CLI</option>
             <option value="opencode">OpenCode CLI</option>
           </select>
@@ -220,6 +212,9 @@
       <div id="view-agent-detail" class="view-pane" data-od-id="view-agent-detail">
         <div class="page-header">
           <div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-back-to-agents" title="返回 Agents">← Agents</button>
+            </div>
             <div style="display:flex; align-items:center; gap:8px;">
               <h1 class="page-title" id="detail-agent-name" style="font-family:var(--font-mono);">web-browser-ops</h1>
               <span class="agent-status-badge badge-working" id="detail-agent-status">Working</span>
@@ -247,27 +242,22 @@
             <div class="form-group">
               <label class="form-label">底层 CLI 执行引擎</label>
               <select class="form-select" id="detail-cli-select" data-field="default_cli">
-                <option value="cursor-agent">Cursor Agent CLI (playwright mode)</option>
-                <option value="codex">Codex CLI (data reasoning)</option>
-                <option value="opencode">OpenCode CLI (api/bot)</option>
+                <option value="cursor-agent">Cursor Agent CLI</option>
+                <option value="codex">Codex CLI</option>
+                <option value="opencode">OpenCode CLI</option>
               </select>
             </div>
 
             <div class="form-group">
               <label class="form-label">指定模型 (Preferred Model)</label>
               <select class="form-select" id="detail-model-select" data-field="preferred_model">
-                <option value="claude-3.7-sonnet">claude-3.7-sonnet (Vision &amp; DOM)</option>
-                <option value="gpt-5.6-terra">gpt-5.6-terra (Codex Reasoning)</option>
-                <option value="gpt-4o-latest">gpt-4o-latest</option>
+                <option value="">加载模型中…</option>
               </select>
             </div>
 
             <div class="form-group">
               <label class="form-label">Reasoning Effort (推理深度)</label>
               <div class="reasoning-pills" id="detail-reasoning-pills" data-field="reasoning_effort">
-                <div class="reasoning-pill" data-reasoning="low">Low</div>
-                <div class="reasoning-pill active" data-reasoning="medium">Medium</div>
-                <div class="reasoning-pill" data-reasoning="high">High</div>
               </div>
             </div>
 
@@ -290,13 +280,6 @@
               <p style="font-size:11px; color:var(--fg-muted);">遇到复杂 DOM 或验证码时自动提升 Reasoning Effort。</p>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Playwright 浏览器模式</label>
-              <select class="form-select" id="detail-playwright-mode" data-field="playwright_mode">
-                <option value="headless">Headless (无头模式)</option>
-                <option value="headed">Headed (界面调试模式)</option>
-              </select>
-            </div>
           </div>
 
           <!-- Right Content: Skill Management & Sandbox -->
@@ -308,7 +291,7 @@
               </div>
 
               <div id="agent-skill-list">
-                <div style="font-size:12px; color:var(--fg-muted); padding:8px 0;">请先从 Agent 矩阵选择一个 Agent。</div>
+                <div style="font-size:12px; color:var(--fg-muted); padding:8px 0;">请先从 Agents 选择一个 Agent。</div>
               </div>
             </div>
 
@@ -318,7 +301,7 @@
               <p style="font-size:11.5px; color:var(--fg-muted); margin: 4px 0 12px 0;">直接在当前工作区上下文运行 CLI 调试命令：</p>
 
               <div style="display:flex; gap:8px; margin-bottom:12px;">
-                <input type="text" class="form-input" id="sandbox-prompt" value="启动 Playwright 验证目标网站登录状态并刷新 Session Cookie" />
+                <input type="text" class="form-input" id="sandbox-prompt" placeholder="输入要在当前 Agent 工作区执行的 Prompt…" value="" />
                 <button class="btn btn-primary" id="sandbox-run-btn" onclick="runSandboxTest()">运行测试</button>
                 <button class="btn" id="sandbox-cancel-btn" type="button" disabled>取消</button>
               </div>
@@ -367,18 +350,12 @@
             <div class="form-group" style="margin:0;">
               <label class="form-label" for="orch-model-select">Model</label>
               <select class="form-select" id="orch-model-select">
-                <option value="sol">sol</option>
-                <option value="claude-3.7-sonnet">claude-3.7-sonnet</option>
-                <option value="gpt-5.6-terra">gpt-5.6-terra</option>
-                <option value="gpt-4o-latest">gpt-4o-latest</option>
+                <option value="">加载模型中…</option>
               </select>
             </div>
             <div class="form-group" style="margin:0;">
               <label class="form-label">Reasoning</label>
               <div class="reasoning-pills" id="orch-reasoning-pills">
-                <div class="reasoning-pill" data-reasoning="low">Low</div>
-                <div class="reasoning-pill active" data-reasoning="medium">Medium</div>
-                <div class="reasoning-pill" data-reasoning="high">High</div>
               </div>
             </div>
           </div>
@@ -390,7 +367,7 @@
 
         <!-- High-level Prompt Input Box -->
         <div class="commander-prompt-box" data-od-id="commander-prompt-box">
-          <textarea class="commander-input" id="commander-prompt-text" placeholder="输入综合自动化与运营目标...">启动 Playwright 抓取竞品 A/B/C 网站的最新产品价格与促销活动，由 research-collector 提取 JSON 并汇总对比，生成 Markdown 竞品简报，并调用 workflow-orchestrator 自动发送到飞书工作群。</textarea>
+          <textarea class="commander-input" id="commander-prompt-text" placeholder="输入综合自动化与运营目标..."></textarea>
           
           <div class="commander-bar-footer">
             <div class="template-chips">
@@ -428,8 +405,8 @@
         <div class="task-split-layout">
           <div class="task-list-panel">
             <div class="task-list-header">
-              <span>任务执行历史</span>
-              <span id="task-history-count" style="font-size:11px; font-weight:normal; color:var(--fg-muted);">共 0 个</span>
+              <span>任务执行历史 <span id="task-history-count" style="font-size:11px; font-weight:normal; color:var(--fg-muted);">共 0 个</span></span>
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-clear-task-history" title="清空全部执行历史">清空</button>
             </div>
             <div id="task-history-list"></div>
           </div>
@@ -439,6 +416,8 @@
               <div class="panel-title-bar">
                 <div class="panel-title">任务依赖拓扑图 (Task DAG)</div>
                 <div style="display:flex; gap:6px;">
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-save-run-template">保存为模版</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-cancel-run">取消任务</button>
                   <button type="button" class="btn btn-secondary btn-sm" id="btn-retry-node">失败重试</button>
                   <button type="button" class="btn btn-secondary btn-sm" id="btn-skip-node">人工跳过</button>
                 </div>
@@ -467,12 +446,78 @@
               <div class="panel-title-bar">
                 <div class="panel-title">自动化产生的数据与文档产物</div>
                 <div style="display:flex; gap:8px; align-items:center;">
-                  <span id="artifact-path-label" style="font-size:11px; color:var(--fg-muted); font-family:var(--font-mono);">—</span>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-reveal-artifact">在 Finder 中显示</button>
                   <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-artifact">复制产物</button>
                 </div>
               </div>
-              <pre class="diff-box" id="artifact-content-box" style="white-space:pre-wrap; margin:0; font-family:var(--font-mono); font-size:11px;">Select a node with artifacts to preview.</pre>
+              <div class="artifact-panel">
+                <div class="artifact-path-list" id="artifact-path-list" role="listbox" aria-label="产物列表">
+                  <div class="artifact-path-empty">选择 DAG 节点查看产物</div>
+                </div>
+                <div class="artifact-preview">
+                  <div id="artifact-path-label" class="artifact-path-label">—</div>
+                  <pre class="diff-box artifact-content-box" id="artifact-content-box">Select a node with artifacts to preview.</pre>
+                </div>
+              </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================================================
+           VIEW 6: TEMPLATE LIBRARY
+           =================================================================== -->
+      <div id="view-templates" class="view-pane" data-od-id="view-templates" aria-hidden="true">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">模版库</h1>
+            <p class="page-desc">保存已跑通的 Goal + Plan，填入 topic / id 等变量即可反复执行。</p>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-templates">刷新</button>
+          </div>
+        </div>
+
+        <div class="tpl-split">
+          <aside class="tpl-sidebar">
+            <div class="tpl-sidebar-header">
+              <span>已保存模版 <span id="template-list-count" class="tpl-sidebar-count">共 0 个</span></span>
+            </div>
+            <div id="template-list" class="tpl-sidebar-list"></div>
+          </aside>
+          <div class="tpl-detail-panel" id="template-detail">
+            <div class="tpl-detail-empty">
+              <div class="tpl-detail-empty-title">选择一个模版</div>
+              <div class="tpl-detail-empty-desc">查看 DAG、填写变量后一键执行。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================================================================
+           VIEW 7: SCHEDULES
+           =================================================================== -->
+      <div id="view-schedules" class="view-pane" data-od-id="view-schedules" aria-hidden="true">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Schedules</h1>
+            <p class="page-desc">按指定时间执行一次，或按间隔多次自动跑某个模版。</p>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-schedules">刷新</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-new-schedule">新建定时任务</button>
+          </div>
+        </div>
+
+        <div class="task-split-layout">
+          <div class="task-list-panel">
+            <div class="task-list-header">
+              <span>定时任务 <span id="schedule-list-count" style="font-size:11px; font-weight:normal; color:var(--fg-muted);">共 0 个</span></span>
+            </div>
+            <div id="schedule-list"></div>
+          </div>
+          <div class="card-panel" id="schedule-detail" style="margin:0; overflow-y:auto;">
+            <div style="padding:24px; color:var(--fg-muted); font-size:13px;">选择左侧任务查看详情，或点击「新建定时任务」。</div>
           </div>
         </div>
       </div>
@@ -518,7 +563,7 @@
     <div class="form-group">
       <label class="form-label">默认 CLI 执行引擎</label>
       <select id="import-agent-cli" class="form-select">
-        <option value="cursor-agent">Cursor Agent CLI (playwright engine)</option>
+        <option value="cursor-agent">Cursor Agent CLI</option>
         <option value="codex">Codex CLI</option>
         <option value="opencode">OpenCode CLI</option>
       </select>
@@ -540,6 +585,33 @@
     </div>
     <div style="font-size:12px; color:var(--fg-muted); margin-bottom:12px;" id="skill-modal-desc">技能描述</div>
     <div style="background:#0f172a; border-radius:var(--radius-md); padding:12px; font-family:var(--font-mono); font-size:11.5px; color:#f1f5f9; line-height:1.6; max-height:260px; overflow-y:auto; white-space:pre-wrap;" id="skill-modal-body"></div>
+  </div>
+</div>
+
+<!-- App-native confirmation dialog (WKWebView window.confirm is unreliable). -->
+<div class="modal-overlay" id="confirm-modal" aria-hidden="true">
+  <div
+    class="modal-card confirm-modal-card"
+    role="alertdialog"
+    aria-modal="true"
+    aria-labelledby="confirm-modal-title"
+    aria-describedby="confirm-modal-message"
+  >
+    <h3 class="confirm-modal-title" id="confirm-modal-title">确认操作</h3>
+    <p class="confirm-modal-message" id="confirm-modal-message"></p>
+    <div class="confirm-modal-actions">
+      <button type="button" class="btn btn-secondary" id="confirm-modal-cancel">取消</button>
+      <button type="button" class="btn btn-danger" id="confirm-modal-submit">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- Save Template Wizard Modal -->
+<div class="modal-overlay" id="template-save-modal" aria-hidden="true">
+  <div class="modal-card" onclick="event.stopPropagation()" style="width:720px; max-height:85vh; overflow-y:auto;">
+    <div id="template-save-body">
+      <div style="padding:24px; text-align:center; color:var(--fg-muted); font-size:13px;">准备中…</div>
+    </div>
   </div>
 </div>
 
