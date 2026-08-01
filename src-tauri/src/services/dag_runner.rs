@@ -2,10 +2,11 @@
 use crate::engines::adapter::{EngineRunRequest, LogEvent, TokenUsage};
 use crate::engines::runner::{run_engine_unchecked, validate_imported_workspace, CancelToken};
 use crate::repo::{
-    append_task_log, get_agent, get_plan, get_task_node, get_task_run, record_node_usage,
-    record_schedule_run_result, set_node_artifact_paths, update_node_status, update_run_progress, NodeUsageInsert,
-    TaskLogAppend, TaskNode, TaskRun,
+    append_task_log, get_agent, get_agent_profile, get_plan, get_task_node, get_task_run,
+    record_node_usage, record_schedule_run_result, set_node_artifact_paths, update_node_status,
+    update_run_progress, NodeUsageInsert, TaskLogAppend, TaskNode, TaskRun,
 };
+use crate::services::cli_models::engine_options_fast;
 use crate::services::handoff::{
     copy_predecessor_artifacts, enrich_prompt, filter_existing_artifacts, node_local_id,
     normalize_artifact_path, parse_artifact_paths_json, HandoffInput,
@@ -367,15 +368,25 @@ pub fn execute_node_with_db(
             );
         }
 
+        let model = node.model.clone().filter(|m| !m.trim().is_empty());
+        let reasoning = crate::services::cli_models::effective_reasoning_effort(
+            &engine,
+            model.as_deref(),
+            node.reasoning_effort.as_deref(),
+        );
+        let profile = get_agent_profile(&conn, agent_id)?;
+        let fast = engine_options_fast(
+            profile
+                .as_ref()
+                .and_then(|p| p.engine_options_json.as_deref()),
+        );
         let req = EngineRunRequest {
             engine,
             cwd,
             prompt: full_prompt,
-            model: node.model.clone().filter(|m| !m.trim().is_empty()),
-            reasoning: node
-                .reasoning_effort
-                .clone()
-                .filter(|r| !r.trim().is_empty()),
+            model,
+            reasoning,
+            fast,
             extra_args: vec![],
             env: HashMap::new(),
             stream_output: true,

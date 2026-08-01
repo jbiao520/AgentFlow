@@ -15,7 +15,8 @@ use commands::orchestrate::{confirm_plan_answers, orchestrate, orchestrate_from_
 use commands::overview::{get_overview_stats, list_recent_agents, list_running_queue};
 use commands::sandbox::{sandbox_cancel, sandbox_run};
 use commands::schedules::{
-    create_schedule_cmd, delete_schedule_cmd, get_schedule_cmd, list_schedules,
+    create_schedule_cmd, delete_schedule_cmd, get_schedule_cmd, list_schedule_runs,
+    list_schedules,
     run_schedule_now_cmd, set_schedule_enabled_cmd, update_schedule_cmd,
 };
 use commands::settings::{get_orchestrator_settings, update_orchestrator_settings};
@@ -125,6 +126,7 @@ pub fn run() {
             duplicate_template_cmd,
             instantiate_template,
             list_schedules,
+            list_schedule_runs,
             get_schedule_cmd,
             create_schedule_cmd,
             update_schedule_cmd,

@@ -20,6 +20,8 @@ export type EngineModel = {
   display_name: string;
   efforts: string[];
   default_effort: string | null;
+  /** Cursor: base model has a `-fast` catalog variant. */
+  supports_fast?: boolean;
 };
 
 export type EngineModelCatalog = {

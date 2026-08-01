@@ -91,7 +91,30 @@ pub fn get_task_run(
     state: State<'_, DbState>,
     id: String,
 ) -> Result<Option<TaskRunWithNodes>, String> {
-    with_db(&state, |c| repo_get_run(c, &id))
+    with_db(&state, |c| {
+        let full = repo_get_run(c, &id)?;
+        let Some(full) = full else {
+            return Ok(None);
+        };
+        // Rebuild polluted or missing acceptance reports for finished runs so
+        // older history picks up marker-parsing fixes without a re-run.
+        let terminal = matches!(
+            full.run.status.as_str(),
+            "success" | "failed" | "cancelled"
+        );
+        if terminal
+            && crate::services::delivery::delivery_report_needs_rebuild(
+                full.run.delivery_report_json.as_deref(),
+            )
+        {
+            match crate::services::delivery::finalize_delivery_report(c, &id) {
+                Ok(_) => repo_get_run(c, &id),
+                Err(_) => Ok(Some(full)),
+            }
+        } else {
+            Ok(Some(full))
+        }
+    })
 }
 
 #[tauri::command]

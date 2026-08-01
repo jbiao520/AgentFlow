@@ -38,12 +38,12 @@ function navAction(view: ViewId, label: string): CmdKAction {
 
 async function buildActions(): Promise<CmdKAction[]> {
   const actions: CmdKAction[] = [
-    navAction("overview", "跳转至 全局总览"),
-    navAction("agents", "跳转至 Agent 矩阵"),
-    navAction("commander", "打开 调度中枢"),
-    navAction("tasks", "查看 任务中心"),
+    navAction("overview", "跳转至 概览"),
+    navAction("agents", "跳转至 Agents"),
+    navAction("commander", "打开 调度"),
+    navAction("tasks", "查看 任务"),
     navAction("templates", "打开 模版库"),
-    navAction("schedules", "打开 定时调度"),
+    navAction("schedules", "打开 定时任务"),
     navAction("settings", "打开 设置"),
     {
       id: "action-probe-cli",
@@ -77,7 +77,7 @@ async function buildActions(): Promise<CmdKAction[]> {
     },
     {
       id: "action-commander",
-      label: "Open commander — 调度中枢工作台",
+      label: "Open commander — 调度工作台",
       keywords: "commander orchestrate dispatch 调度",
       group: "action",
       run: () => {
@@ -130,7 +130,7 @@ function renderList(actions: CmdKAction[], query: string): void {
   const groups: Array<{ key: CmdKAction["group"]; title: string }> = [
     { key: "nav", title: "Quick Nav" },
     { key: "action", title: "Actions" },
-    { key: "agent", title: "Agent 矩阵" },
+    { key: "agent", title: "Agents" },
   ];
 
   let html = "";

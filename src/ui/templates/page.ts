@@ -22,6 +22,7 @@ import {
   planSuggestedConcurrency,
   readConcurrencySelect,
 } from "../concurrency";
+import { destroySelectsIn, enhanceSelectsIn } from "../form";
 import { showView } from "../router";
 import { formatActionableError, showToast } from "../toast";
 import { updateTemplateNavCount } from "../nav-counts";
@@ -126,7 +127,7 @@ function renderList(): void {
   if (state.templates.length === 0) {
     list.innerHTML = `<div class="tpl-list-empty">
       <div class="tpl-list-empty-title">还没有模版</div>
-      <div class="tpl-list-empty-desc">从任务中心或调度中枢将已执行的 Plan「保存为模版」。</div>
+      <div class="tpl-list-empty-desc">从任务或调度将已执行的 Plan「保存为模版」。</div>
     </div>`;
     return;
   }
@@ -195,6 +196,7 @@ async function selectTemplate(id: string): Promise<void> {
 function renderDetail(): void {
   const root = document.getElementById("template-detail");
   if (!root) return;
+  destroySelectsIn(root);
   const t = state.detail;
   if (!t) {
     root.innerHTML = `<div class="tpl-detail-empty">
@@ -322,6 +324,8 @@ function renderDetail(): void {
   document.getElementById("tpl-del-btn")?.addEventListener("click", () => {
     void onDelete();
   });
+
+  enhanceSelectsIn(root);
 }
 
 function collectRunValues(): Record<string, string> {
@@ -373,7 +377,7 @@ function setLaunchBusy(busy: boolean, mode: "run" | "preview" | null): void {
           <span class="tpl-launch-spinner" aria-hidden="true"></span>
           <div class="tpl-launch-text">
             <div class="tpl-launch-title">${label}</div>
-            <div class="tpl-launch-sub">实例化变量 · 校验 Plan · ${mode === "preview" ? "跳转调度中枢" : "分发并启动 DAG"}</div>
+            <div class="tpl-launch-sub">实例化变量 · 校验 Plan · ${mode === "preview" ? "跳转调度" : "分发并启动 DAG"}</div>
           </div>
         </div>`;
     }
@@ -449,7 +453,7 @@ async function runSelected(dispatch: boolean): Promise<void> {
           result.orchestrate.warnings || [],
         );
       }
-      showToast("已生成 Plan，请在调度中枢确认后分发", { kind: "success" });
+      showToast("已生成 Plan，请在调度确认后分发", { kind: "success" });
       showView("commander");
       state.launching = false;
     }

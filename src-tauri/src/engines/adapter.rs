@@ -9,6 +9,9 @@ pub struct EngineRunRequest {
     pub prompt: String,
     pub model: Option<String>,
     pub reasoning: Option<String>,
+    /// Cursor Agent: append `-fast` when composing the `--model` id.
+    #[serde(default)]
+    pub fast: bool,
     #[serde(default)]
     pub extra_args: Vec<String>,
     #[serde(default)]
@@ -29,8 +32,8 @@ pub struct LogEvent {
 }
 
 /// Token usage parsed from engine JSONL streams (codex `turn.completed`,
-/// opencode `step_finish`). `cost` is set when the CLI reports it (opencode);
-/// otherwise the caller estimates it from per-model pricing.
+/// opencode `step_finish`, cursor-agent `result`). `cost` is set when the CLI
+/// reports it (opencode); otherwise the caller estimates it from per-model pricing.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct TokenUsage {
     pub input_tokens: u64,
@@ -51,7 +54,8 @@ impl TokenUsage {
     }
 
     /// Total tokens using the accounting convention of the given engine.
-    /// OpenCode reports cache tokens separately from input tokens.
+    /// OpenCode and cursor-agent report cache tokens separately from input;
+    /// Codex includes cache in `input_tokens`.
     pub fn total_tokens_for_engine(&self, engine: &str) -> u64 {
         let total = self.total_tokens();
         if engine == "codex" {
@@ -102,6 +106,7 @@ mod tests {
         assert_eq!(usage.total_tokens(), 140);
         assert_eq!(usage.total_tokens_for_engine("codex"), 140);
         assert_eq!(usage.total_tokens_for_engine("opencode"), 165);
+        assert_eq!(usage.total_tokens_for_engine("cursor-agent"), 165);
     }
 }
 

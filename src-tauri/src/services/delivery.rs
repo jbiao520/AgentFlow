@@ -74,39 +74,44 @@ pub fn build_delivery_report(conn: &Connection, run_id: &str) -> Result<Delivery
     let mut explicit_verification = Vec::new();
     let mut risks = Vec::new();
     for log in &logs {
-        if let Some(value) = first_marker_payload(
+        // Prompt / CLI command echoes contain the marker template itself — never
+        // treat them as agent-emitted acceptance data.
+        if is_command_or_prompt_echo(&log.message) {
+            continue;
+        }
+
+        for value in all_marker_payloads(
             &log.message,
             &["AGENTFLOW_SUMMARY:", "AGENTMIND_SUMMARY:"],
         ) {
-            if !summaries.contains(&value) {
-                summaries.push(value);
-            }
+            push_preferred(&mut summaries, value);
         }
-        if let Some(value) = first_marker_payload(
+        for value in all_marker_payloads(
             &log.message,
             &["AGENTFLOW_VERIFY:", "AGENTMIND_VERIFY:"],
         ) {
-            explicit_verification.push(parse_verification(&value));
+            push_verification(&mut explicit_verification, parse_verification(&value));
         }
-        if let Some(value) =
-            first_marker_payload(&log.message, &["AGENTFLOW_RISK:", "AGENTMIND_RISK:"])
-        {
-            push_unique(&mut risks, value);
+        for value in all_marker_payloads(&log.message, &["AGENTFLOW_RISK:", "AGENTMIND_RISK:"]) {
+            push_preferred(&mut risks, value);
         }
-        if matches!(log.level.as_str(), "warn" | "error")
-            && !log.message.contains("AGENTFLOW_RISK:")
-            && !log.message.contains("AGENTMIND_RISK:")
+
+        if matches!(log.level.as_str(), "warn" | "error") && !message_has_markers(&log.message)
         {
-            push_unique(&mut risks, clean_log_message(&log.message));
+            if let Some(risk) = risk_from_log_message(&log.message) {
+                push_preferred(&mut risks, risk);
+            }
         }
     }
 
     let has_explicit_verification = !explicit_verification.is_empty();
     let mut verification = full.nodes.iter().map(node_verification).collect::<Vec<_>>();
-    verification.extend(explicit_verification);
+    for item in explicit_verification {
+        push_verification(&mut verification, item);
+    }
     for result in &verification {
         if result.status == "failed" {
-            push_unique(
+            push_preferred(
                 &mut risks,
                 format!("验证失败：{}：{}", result.label, result.detail),
             );
@@ -115,9 +120,9 @@ pub fn build_delivery_report(conn: &Connection, run_id: &str) -> Result<Delivery
 
     for node in &full.nodes {
         match node.status.as_str() {
-            "skipped" => push_unique(&mut risks, format!("节点已跳过：{}", node.title)),
-            "failed" => push_unique(&mut risks, format!("节点失败：{}", node.title)),
-            "pending" | "running" => push_unique(
+            "skipped" => push_preferred(&mut risks, format!("节点已跳过：{}", node.title)),
+            "failed" => push_preferred(&mut risks, format!("节点失败：{}", node.title)),
+            "pending" | "running" => push_preferred(
                 &mut risks,
                 format!("节点未完成：{}（{}）", node.title, node.status),
             ),
@@ -130,13 +135,16 @@ pub fn build_delivery_report(conn: &Connection, run_id: &str) -> Result<Delivery
         .as_deref()
         .filter(|error| !error.trim().is_empty())
     {
-        push_unique(&mut risks, format!("Run 错误：{}", error.trim()));
+        push_preferred(&mut risks, format!("Run 错误：{}", error.trim()));
     }
     if full.run.status == "cancelled" {
-        push_unique(&mut risks, "任务被取消，未完成节点不会被视为通过。".into());
+        push_preferred(
+            &mut risks,
+            "任务被取消，未完成节点不会被视为通过。".into(),
+        );
     }
     if full.run.status == "success" && !has_explicit_verification {
-        push_unique(
+        push_preferred(
             &mut risks,
             "未检测到自动化验证结果标记；当前仅确认各执行节点退出成功。".into(),
         );
@@ -145,7 +153,7 @@ pub fn build_delivery_report(conn: &Connection, run_id: &str) -> Result<Delivery
     let artifacts = collect_artifacts(conn, &full.nodes);
     for artifact in &artifacts {
         if !artifact.exists {
-            push_unique(
+            push_preferred(
                 &mut risks,
                 format!(
                     "产物缺失：{}（节点：{}）",
@@ -156,12 +164,12 @@ pub fn build_delivery_report(conn: &Connection, run_id: &str) -> Result<Delivery
     }
     let (changed_files, diff, workspace_risks) = collect_workspace_changes(conn, &full.nodes);
     for risk in workspace_risks {
-        push_unique(&mut risks, risk);
+        push_preferred(&mut risks, risk);
     }
     risks.truncate(MAX_RISKS);
 
     let summary = if !summaries.is_empty() {
-        summaries.join("\n")
+        format_summary_list(&summaries)
     } else {
         fallback_summary(conn, &full.run, &full.nodes)
     };
@@ -175,6 +183,24 @@ pub fn build_delivery_report(conn: &Connection, run_id: &str) -> Result<Delivery
         verification,
         risks,
     })
+}
+
+/// True when a stored report still contains prompt-footer template noise and
+/// should be rebuilt with the current parser.
+pub fn delivery_report_needs_rebuild(json: Option<&str>) -> bool {
+    let Some(json) = json.map(str::trim).filter(|s| !s.is_empty()) else {
+        return true;
+    };
+    const NOISE: &[&str] = &[
+        "<one-sentence result>",
+        "<check name>",
+        "<what you checked>",
+        "<remaining risk",
+        "Keep using AGENTFLOW_ARTIFACT",
+        "Keep using AGENTMIND_ARTIFACT",
+        "or omit this line if none",
+    ];
+    NOISE.iter().any(|frag| json.contains(frag))
 }
 
 fn fallback_summary(conn: &Connection, run: &TaskRun, nodes: &[TaskNode]) -> String {
@@ -240,32 +266,168 @@ fn parse_verification(value: &str) -> DeliveryVerification {
     }
 }
 
-fn marker_payload(message: &str, marker: &str) -> Option<String> {
-    message
-        .split_once(marker)
-        .map(|(_, value)| {
-            // Take only the first line of the payload (markers are one line each).
-            value.lines().next().unwrap_or(value).trim().to_string()
-        })
-        .filter(|value| !value.is_empty())
+const ALL_MARKERS: &[&str] = &[
+    "AGENTFLOW_SUMMARY:",
+    "AGENTMIND_SUMMARY:",
+    "AGENTFLOW_VERIFY:",
+    "AGENTMIND_VERIFY:",
+    "AGENTFLOW_RISK:",
+    "AGENTMIND_RISK:",
+    "AGENTFLOW_ARTIFACT:",
+    "AGENTMIND_ARTIFACT:",
+];
+
+fn strip_stream_prefix(line: &str) -> &str {
+    let trimmed = line.trim();
+    trimmed
+        .strip_prefix("[agent] ")
+        .or_else(|| trimmed.strip_prefix("[status] "))
+        .or_else(|| trimmed.strip_prefix("[think] "))
+        .or_else(|| trimmed.strip_prefix("[tool] "))
+        .unwrap_or(trimmed)
 }
 
-fn first_marker_payload(message: &str, markers: &[&str]) -> Option<String> {
-    for marker in markers {
-        if let Some(value) = marker_payload(message, marker) {
-            return Some(value);
+/// CLI command / prompt echoes that must never be parsed as agent markers.
+fn is_command_or_prompt_echo(message: &str) -> bool {
+    let t = message.trim_start();
+    t.starts_with('$')
+        || t.contains("When you finish, emit these machine-readable lines")
+        || t.contains("When you create or update output files, print exactly one line")
+        || t.contains("emit these machine-readable lines")
+}
+
+fn message_has_markers(message: &str) -> bool {
+    ALL_MARKERS.iter().any(|m| message.contains(m))
+}
+
+/// Footer template placeholders and instructional fragments are not real data.
+fn is_template_placeholder(value: &str) -> bool {
+    let t = value.trim();
+    if t.is_empty() {
+        return true;
+    }
+    let lower = t.to_lowercase();
+    lower.contains("<one-sentence")
+        || lower.contains("<check name>")
+        || lower.contains("<what you checked>")
+        || lower.contains("<remaining risk")
+        || lower.contains("<workspace-relative")
+        || lower.contains("or omit this line")
+        || t.contains("Keep using AGENTFLOW_ARTIFACT")
+        || t.contains("Keep using AGENTMIND_ARTIFACT")
+}
+
+fn cut_at_nested_marker(value: &str) -> String {
+    let mut cut = value.len();
+    for marker in ALL_MARKERS {
+        if let Some(i) = value.find(marker) {
+            cut = cut.min(i);
         }
     }
-    None
+    value[..cut].trim().to_string()
 }
 
-fn clean_log_message(message: &str) -> String {
-    message
-        .strip_prefix("[agent] ")
-        .or_else(|| message.strip_prefix("[status] "))
-        .unwrap_or(message)
-        .trim()
-        .to_string()
+/// Collect every marker payload in a log message (one marker per line).
+fn all_marker_payloads(message: &str, markers: &[&str]) -> Vec<String> {
+    let mut out = Vec::new();
+    for raw_line in message.lines() {
+        let line = strip_stream_prefix(raw_line);
+        if line.is_empty() {
+            continue;
+        }
+        for marker in markers {
+            if let Some(idx) = line.find(marker) {
+                // Prefer markers at the start of the line (or after short prefixes).
+                // Mid-sentence mentions of the marker name are ignored.
+                let before = line[..idx].trim();
+                if !before.is_empty() && before.len() > 24 {
+                    continue;
+                }
+                let value = cut_at_nested_marker(line[idx + marker.len()..].trim());
+                if !value.is_empty() && !is_template_placeholder(&value) {
+                    out.push(value);
+                }
+                break;
+            }
+        }
+    }
+    out
+}
+
+fn risk_from_log_message(message: &str) -> Option<String> {
+    let cleaned = strip_stream_prefix(message).to_string();
+    if cleaned.is_empty() || cleaned.starts_with('$') || is_template_placeholder(&cleaned) {
+        return None;
+    }
+    // Command dumps and huge stderr blobs are not useful as risk lines.
+    let first_line = cleaned.lines().next().unwrap_or("").trim();
+    if first_line.is_empty() || first_line.starts_with('$') {
+        return None;
+    }
+    if first_line.len() > 280 {
+        let mut truncated: String = first_line.chars().take(280).collect();
+        truncated.push('…');
+        return Some(truncated);
+    }
+    // Prefer a single concise line over multi-line stderr walls.
+    if cleaned.lines().count() > 3 {
+        return Some(first_line.to_string());
+    }
+    Some(if cleaned.len() > 400 {
+        let mut truncated: String = cleaned.chars().take(400).collect();
+        truncated.push('…');
+        truncated
+    } else {
+        cleaned
+    })
+}
+
+/// Keep longer values when one is a prefix of another (streamed partials).
+fn push_preferred(values: &mut Vec<String>, value: String) {
+    let value = value.trim().to_string();
+    if value.is_empty() || is_template_placeholder(&value) {
+        return;
+    }
+    values.retain(|existing| {
+        !(value.starts_with(existing.as_str()) && value.len() > existing.len())
+    });
+    if values
+        .iter()
+        .any(|existing| existing.starts_with(&value) && existing.len() >= value.len())
+    {
+        return;
+    }
+    if !values.contains(&value) {
+        values.push(value);
+    }
+}
+
+fn push_verification(list: &mut Vec<DeliveryVerification>, item: DeliveryVerification) {
+    if is_template_placeholder(&item.label) || is_template_placeholder(&item.detail) {
+        return;
+    }
+    if let Some(existing) = list
+        .iter_mut()
+        .find(|v| v.label == item.label && v.status == item.status)
+    {
+        // Prefer the longer detail (streamed partials → full line).
+        if item.detail.len() > existing.detail.len() {
+            *existing = item;
+        }
+        return;
+    }
+    list.push(item);
+}
+
+fn format_summary_list(summaries: &[String]) -> String {
+    if summaries.len() == 1 {
+        return summaries[0].clone();
+    }
+    summaries
+        .iter()
+        .map(|s| format!("- {s}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn push_unique(values: &mut Vec<String>, value: String) {
@@ -444,17 +606,78 @@ mod tests {
 
     #[test]
     fn parses_machine_readable_markers() {
-        assert_eq!(
-            marker_payload(
-                "[agent] AGENTFLOW_SUMMARY: shipped it",
-                "AGENTFLOW_SUMMARY:"
-            ),
-            Some("shipped it".into())
+        let payloads = all_marker_payloads(
+            "[agent] AGENTFLOW_SUMMARY: shipped it",
+            &["AGENTFLOW_SUMMARY:"],
         );
+        assert_eq!(payloads, vec!["shipped it".to_string()]);
         let verification = parse_verification("PASS | unit tests | cargo test passed");
         assert_eq!(verification.status, "passed");
         assert_eq!(verification.label, "unit tests");
         assert_eq!(verification.detail, "cargo test passed");
+    }
+
+    #[test]
+    fn extracts_multiple_markers_from_one_message() {
+        let msg = "[agent] AGENTFLOW_ARTIFACT:out.md\n\
+AGENTFLOW_SUMMARY: done the work\n\
+AGENTFLOW_VERIFY: PASS | unit | tests green\n\
+AGENTFLOW_VERIFY: PASS | style | lints clean\n\
+AGENTFLOW_RISK: none remaining";
+        assert_eq!(
+            all_marker_payloads(msg, &["AGENTFLOW_SUMMARY:"]),
+            vec!["done the work".to_string()]
+        );
+        assert_eq!(
+            all_marker_payloads(msg, &["AGENTFLOW_VERIFY:"]),
+            vec![
+                "PASS | unit | tests green".to_string(),
+                "PASS | style | lints clean".to_string()
+            ]
+        );
+        assert_eq!(
+            all_marker_payloads(msg, &["AGENTFLOW_RISK:"]),
+            vec!["none remaining".to_string()]
+        );
+    }
+
+    #[test]
+    fn ignores_prompt_footer_templates_and_command_echoes() {
+        let footer = agent_prompt_footer();
+        assert!(is_command_or_prompt_echo(footer));
+        assert!(is_command_or_prompt_echo(
+            "$ cursor-agent --print AGENTFLOW_SUMMARY: <one-sentence result>"
+        ));
+        assert!(is_template_placeholder("<one-sentence result>"));
+        assert!(is_template_placeholder(
+            "PASS | <check name> | <what you checked>"
+        ));
+        assert!(is_template_placeholder(
+            "<remaining risk, or omit this line if none>"
+        ));
+        assert!(all_marker_payloads(footer, &["AGENTFLOW_SUMMARY:"]).is_empty());
+        assert!(all_marker_payloads(footer, &["AGENTFLOW_VERIFY:"]).is_empty());
+        assert!(all_marker_payloads(footer, &["AGENTFLOW_RISK:"]).is_empty());
+    }
+
+    #[test]
+    fn prefers_longer_streamed_partials() {
+        let mut values = Vec::new();
+        push_preferred(&mut values, "Saved a complete".into());
+        push_preferred(&mut values, "Saved a complete non-paywalled post".into());
+        push_preferred(&mut values, "Saved a complete".into());
+        assert_eq!(values, vec!["Saved a complete non-paywalled post".to_string()]);
+    }
+
+    #[test]
+    fn detects_polluted_reports() {
+        assert!(delivery_report_needs_rebuild(None));
+        assert!(delivery_report_needs_rebuild(Some(
+            r#"{"summary":"<one-sentence result>"}"#
+        )));
+        assert!(!delivery_report_needs_rebuild(Some(
+            r#"{"summary":"任务已完成"}"#
+        )));
     }
 
     #[test]

@@ -7,6 +7,7 @@ import {
   formatInterval,
   localDatetimeToUtcIso,
   localTimeToUtc,
+  listScheduleRuns,
   listSchedules,
   parseScheduleValues,
   runScheduleNow,
@@ -18,12 +19,17 @@ import {
   type ScheduleMode,
   type OverlapPolicy,
 } from "../../lib/api/schedules";
+import type { TaskRun } from "../../lib/api/tasks";
 import {
   listTemplates,
   parseTemplateVariables,
   type Template,
   type TemplateVariable,
 } from "../../lib/api/templates";
+import {
+  destroySelectsIn,
+  enhanceSelectsIn,
+} from "../form";
 import { updateScheduleNavCount } from "../nav-counts";
 import { showView } from "../router";
 import { formatActionableError, showToast } from "../toast";
@@ -35,6 +41,10 @@ type PageState = {
   selectedId: string | null;
   detail: Schedule | null;
   editingNew: boolean;
+  history: TaskRun[];
+  historyLoading: boolean;
+  historyScheduleId: string | null;
+  historyOpen: boolean;
 };
 
 const state: PageState = {
@@ -43,6 +53,10 @@ const state: PageState = {
   selectedId: null,
   detail: null,
   editingNew: false,
+  history: [],
+  historyLoading: false,
+  historyScheduleId: null,
+  historyOpen: false,
 };
 
 function escapeHtml(s: string): string {
@@ -101,6 +115,10 @@ export async function refreshSchedules(): Promise<void> {
   updateScheduleNavCount(state.schedules.filter((s) => s.enabled).length);
   renderList();
   if (state.editingNew) {
+    state.history = [];
+    state.historyLoading = false;
+    state.historyScheduleId = null;
+    setHistoryOpen(false);
     renderEditor(null);
     return;
   }
@@ -109,12 +127,17 @@ export async function refreshSchedules(): Promise<void> {
     if (still) {
       state.detail = still;
       renderEditor(still);
+      if (state.historyOpen) void refreshScheduleHistory(still.id);
     } else {
       state.selectedId = null;
       state.detail = null;
+      state.history = [];
+      state.historyScheduleId = null;
+      setHistoryOpen(false);
       renderEmptyDetail();
     }
   } else {
+    setHistoryOpen(false);
     renderEmptyDetail();
   }
 }
@@ -179,11 +202,131 @@ function selectSchedule(id: string): void {
   state.detail = state.schedules.find((s) => s.id === id) ?? null;
   renderList();
   renderEditor(state.detail);
+  if (state.historyOpen) void refreshScheduleHistory(id);
+}
+
+function setHistoryOpen(open: boolean): void {
+  state.historyOpen = open;
+  const split = document.getElementById("sched-split");
+  const panel = document.getElementById("schedule-history-panel");
+  if (split) split.classList.toggle("history-open", open);
+  if (panel) {
+    panel.hidden = !open;
+    panel.setAttribute("aria-hidden", open ? "false" : "true");
+  }
+  const historyBtn = document.getElementById("sched-history-btn");
+  if (historyBtn) {
+    historyBtn.classList.toggle("active", open);
+    historyBtn.setAttribute("aria-pressed", open ? "true" : "false");
+  }
+}
+
+function toggleHistoryPanel(): void {
+  if (state.editingNew || !state.selectedId) {
+    showToast("请先选择一个定时任务", { kind: "error" });
+    return;
+  }
+  const next = !state.historyOpen;
+  setHistoryOpen(next);
+  if (next && state.selectedId) {
+    void refreshScheduleHistory(state.selectedId);
+  }
+}
+
+function taskStatusLabel(run: TaskRun): string {
+  switch (run.status) {
+    case "queued":
+      return "排队中";
+    case "running":
+      return "执行中";
+    case "success":
+      return "已完成";
+    case "failed":
+      return "失败";
+    case "cancelled":
+      return "已取消";
+    default:
+      return run.status || "未知";
+  }
+}
+
+function taskStatusClass(run: TaskRun): string {
+  if (run.status === "success") return "sched-run-status-success";
+  if (run.status === "failed") return "sched-run-status-failed";
+  if (run.status === "running" || run.status === "queued") return "sched-run-status-active";
+  return "sched-run-status-muted";
+}
+
+function formatRunTime(iso: string | null): string {
+  return iso ? formatLocalWhen(iso) : "等待开始";
+}
+
+function renderScheduleHistory(): void {
+  const root = document.getElementById("sched-run-history");
+  if (!root) return;
+  if (!state.historyOpen) return;
+  if (state.historyLoading) {
+    root.innerHTML = `<div class="sched-history-empty">正在加载执行记录…</div>`;
+    return;
+  }
+  if (state.history.length === 0) {
+    root.innerHTML = `<div class="sched-history-empty">暂无执行记录</div>`;
+    return;
+  }
+  root.innerHTML = state.history
+    .map((run) => {
+      const time = formatRunTime(run.started_at || run.finished_at);
+      const detail = run.finished_at && run.started_at
+        ? `结束 ${formatRunTime(run.finished_at)}`
+        : run.goal_prompt || `#${run.id.slice(0, 8)}`;
+      return `<button type="button" class="sched-run-row" data-sched-run-id="${escapeHtml(run.id)}">
+        <span class="sched-run-row-main">
+          <span class="sched-run-row-time">${escapeHtml(time)}</span>
+          <span class="sched-run-row-detail">${escapeHtml(detail)}</span>
+        </span>
+        <span class="sched-run-row-side">
+          <span class="sched-run-status ${taskStatusClass(run)}">${escapeHtml(taskStatusLabel(run))}</span>
+          <span class="sched-run-trigger">${run.is_manual ? "手动" : "自动"}</span>
+        </span>
+      </button>`;
+    })
+    .join("");
+
+  root.querySelectorAll<HTMLElement>("[data-sched-run-id]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const runId = el.dataset.schedRunId;
+      if (runId) void import("../tasks/center").then((m) => m.openTaskRun(runId));
+    });
+  });
+}
+
+async function refreshScheduleHistory(scheduleId: string): Promise<void> {
+  state.historyScheduleId = scheduleId;
+  state.historyLoading = true;
+  state.history = [];
+  renderScheduleHistory();
+  try {
+    const history = await listScheduleRuns(scheduleId);
+    if (state.historyScheduleId !== scheduleId) return;
+    state.history = history;
+  } catch (e) {
+    if (state.historyScheduleId !== scheduleId) return;
+    showToast(
+      `加载执行历史失败: ${formatActionableError(e instanceof Error ? e.message : String(e))}`,
+      { kind: "error" },
+    );
+  } finally {
+    if (state.historyScheduleId === scheduleId) {
+      state.historyLoading = false;
+      renderScheduleHistory();
+    }
+  }
 }
 
 function renderEmptyDetail(): void {
   const root = document.getElementById("schedule-detail");
   if (!root) return;
+  destroySelectsIn(root);
   root.innerHTML = `<div class="sched-detail-empty">
     <div class="sched-detail-empty-icon" aria-hidden="true">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -265,6 +408,7 @@ function renderEditor(schedule: Schedule | null): void {
     ? `<span class="sched-status ${schedule!.enabled ? "sched-status-on" : "sched-status-off"}">${schedule!.enabled ? "启用中" : "已暂停"}</span>`
     : "";
 
+  destroySelectsIn(root);
   root.innerHTML = `
     <div class="sched-detail">
       <header class="sched-detail-header">
@@ -291,7 +435,8 @@ function renderEditor(schedule: Schedule | null): void {
         <div class="sched-detail-actions">
           ${
             !isNew
-              ? `<button type="button" class="btn btn-secondary btn-sm" id="sched-run-now-btn">立即执行</button>
+              ? `<button type="button" class="btn btn-secondary btn-sm${state.historyOpen ? " active" : ""}" id="sched-history-btn" aria-pressed="${state.historyOpen ? "true" : "false"}">执行历史</button>
+                 <button type="button" class="btn btn-secondary btn-sm" id="sched-run-now-btn">立即执行</button>
                  <button type="button" class="btn btn-secondary btn-sm" id="sched-toggle-btn">${schedule!.enabled ? "暂停" : "启用"}</button>
                  <button type="button" class="btn btn-secondary btn-sm sched-btn-danger" id="sched-del-btn">删除</button>`
               : ""
@@ -440,6 +585,11 @@ function renderEditor(schedule: Schedule | null): void {
   document.getElementById("sched-run-now-btn")?.addEventListener("click", () => {
     if (schedule) void onRunNow(schedule.id);
   });
+  document.getElementById("sched-history-btn")?.addEventListener("click", () => {
+    toggleHistoryPanel();
+  });
+
+  enhanceSelectsIn(root);
 }
 
 function readForm(): {
@@ -645,6 +795,9 @@ async function onDelete(id: string): Promise<void> {
     await deleteSchedule(id);
     state.selectedId = null;
     state.detail = null;
+    state.history = [];
+    state.historyScheduleId = null;
+    setHistoryOpen(false);
     showToast("已删除");
     await refreshSchedules();
   } catch (e) {
@@ -693,7 +846,16 @@ export function initSchedules(): void {
     state.editingNew = true;
     state.selectedId = null;
     state.detail = null;
+    state.history = [];
+    state.historyLoading = false;
+    state.historyScheduleId = null;
+    setHistoryOpen(false);
     renderList();
     renderEditor(null);
   });
+  document
+    .getElementById("sched-history-close-btn")
+    ?.addEventListener("click", () => {
+      setHistoryOpen(false);
+    });
 }

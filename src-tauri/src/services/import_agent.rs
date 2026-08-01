@@ -239,7 +239,9 @@ pub fn import_agent(conn: &Connection, req: ImportAgentRequest) -> Result<Import
             AgentModelProfile {
                 agent_id: agent.id.clone(),
                 preferred_model: None,
-                reasoning_effort: Some("medium".into()),
+                // No default effort — models without reasoning (e.g. Cursor composer)
+                // must not get a leftover "medium" suffix at run time.
+                reasoning_effort: None,
                 engine_options_json: Some("{}".into()),
             },
         )?;

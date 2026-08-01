@@ -13,6 +13,7 @@ import {
   revealWorkspaceArtifact,
   retryNode,
   skipNode,
+  type DeliveryArtifact,
   type DeliveryReport,
   type TaskLog,
   type TaskLogEvent,
@@ -53,6 +54,15 @@ type CenterState = {
   artifactAgentId: string | null;
   artifactContent: string;
   artifactMissing: boolean;
+  /** Run-level final artifacts from delivery report. */
+  deliveryArtifacts: DeliveryArtifact[];
+  selectedDeliveryKey: string | null;
+  deliveryContent: string;
+  deliveryMissing: boolean;
+  deliveryAgentId: string | null;
+  deliveryPath: string | null;
+  /** Bump to ignore stale async preview loads. */
+  deliveryPreviewGeneration: number;
   cancelling: boolean;
   /** Run ids deleted locally — ignore stale task-run-updated resurrection. */
   deletedRunIds: Set<string>;
@@ -74,12 +84,53 @@ const state: CenterState = {
   artifactAgentId: null,
   artifactContent: "",
   artifactMissing: false,
+  deliveryArtifacts: [],
+  selectedDeliveryKey: null,
+  deliveryContent: "",
+  deliveryMissing: false,
+  deliveryAgentId: null,
+  deliveryPath: null,
+  deliveryPreviewGeneration: 0,
   cancelling: false,
   deletedRunIds: new Set(),
   historyRefreshGeneration: 0,
   historyBound: false,
   unsubs: [],
 };
+
+function deliveryArtifactKey(artifact: Pick<DeliveryArtifact, "node_id" | "path">): string {
+  return `${artifact.node_id}::${artifact.path}`;
+}
+
+function pathBasename(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  const parts = normalized.split("/");
+  return parts[parts.length - 1] || path;
+}
+
+function pathDirname(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  const idx = normalized.lastIndexOf("/");
+  return idx > 0 ? normalized.slice(0, idx) : "";
+}
+
+function pathExtBadge(path: string): string {
+  const base = pathBasename(path);
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0 || dot === base.length - 1) return "FILE";
+  return base.slice(dot + 1).toUpperCase().slice(0, 8);
+}
+
+function syncDeliveryToolbar(): void {
+  const has = Boolean(state.selectedDeliveryKey);
+  const hasContent = Boolean(state.deliveryContent) && !state.deliveryMissing;
+  const reveal = document.getElementById("btn-delivery-reveal") as HTMLButtonElement | null;
+  const copy = document.getElementById("btn-delivery-copy") as HTMLButtonElement | null;
+  const expand = document.getElementById("btn-delivery-expand") as HTMLButtonElement | null;
+  if (reveal) reveal.disabled = !has || !state.deliveryAgentId;
+  if (copy) copy.disabled = !hasContent;
+  if (expand) expand.disabled = !hasContent;
+}
 
 function eventElement(ev: Event): Element | null {
   const t = ev.target;
@@ -160,11 +211,203 @@ function parseDeliveryReport(run: TaskRun | null): DeliveryReport | null {
   }
 }
 
+function clearDeliveryReader(message: string): void {
+  state.deliveryArtifacts = [];
+  state.selectedDeliveryKey = null;
+  state.deliveryContent = "";
+  state.deliveryMissing = false;
+  state.deliveryAgentId = null;
+  state.deliveryPath = null;
+  state.deliveryPreviewGeneration += 1;
+
+  const list = document.getElementById("task-delivery-artifacts");
+  const title = document.getElementById("task-delivery-reader-title");
+  const pathEl = document.getElementById("task-delivery-reader-path");
+  const body = document.getElementById("task-delivery-reader-body");
+  if (list) list.innerHTML = `<div class="delivery-empty">${escapeHtml(message)}</div>`;
+  if (title) title.textContent = "尚未选择产物";
+  if (pathEl) pathEl.textContent = "—";
+  if (body) {
+    body.classList.add("fmt-host", "resizable-panel");
+    body.dataset.fmtKind = "text";
+    body.innerHTML = `<div class="fmt-empty">${escapeHtml(message)}</div>`;
+  }
+  syncDeliveryToolbar();
+  closeArtifactExpand();
+}
+
+function renderDeliveryArtifactCards(artifacts: DeliveryArtifact[]): void {
+  const list = document.getElementById("task-delivery-artifacts");
+  if (!list) return;
+
+  if (!artifacts.length) {
+    list.innerHTML = '<div class="delivery-empty">未发现已登记产物</div>';
+    return;
+  }
+
+  list.innerHTML = artifacts
+    .map((artifact) => {
+      const key = deliveryArtifactKey(artifact);
+      const active = key === state.selectedDeliveryKey ? " active" : "";
+      const missing = !artifact.exists ? " missing" : "";
+      const base = pathBasename(artifact.path);
+      const dir = pathDirname(artifact.path);
+      const badge = pathExtBadge(artifact.path);
+      return `<button type="button" class="delivery-artifact-card${active}${missing}" role="option" aria-selected="${key === state.selectedDeliveryKey}" data-delivery-key="${escapeHtml(key)}" data-delivery-node="${escapeHtml(artifact.node_id)}" data-delivery-path="${escapeHtml(artifact.path)}" data-delivery-agent="${escapeHtml(artifact.agent_id || "")}" title="${escapeHtml(artifact.path)}">
+        <div class="delivery-artifact-card-top">
+          <span class="delivery-artifact-ext">${escapeHtml(badge)}</span>
+          <span class="delivery-check ${artifact.exists ? "passed" : "failed"}">${artifact.exists ? "✓" : "!"}</span>
+        </div>
+        <div class="delivery-artifact-name">${escapeHtml(base)}</div>
+        <div class="delivery-artifact-meta">
+          <span class="delivery-artifact-node">${escapeHtml(artifact.node_title || "节点")}</span>
+          ${dir ? `<span class="delivery-artifact-dir" title="${escapeHtml(dir)}">${escapeHtml(dir)}</span>` : ""}
+        </div>
+      </button>`;
+    })
+    .join("");
+
+  // Keep the active chip visible in the horizontal strip.
+  const activeEl = list.querySelector(".delivery-artifact-card.active");
+  if (activeEl instanceof HTMLElement) {
+    activeEl.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  }
+}
+
+function setDeliveryReaderMeta(artifact: DeliveryArtifact | null, statusNote?: string): void {
+  const title = document.getElementById("task-delivery-reader-title");
+  const pathEl = document.getElementById("task-delivery-reader-path");
+  if (!artifact) {
+    if (title) title.textContent = "尚未选择产物";
+    if (pathEl) pathEl.textContent = "—";
+    return;
+  }
+  const base = pathBasename(artifact.path);
+  if (title) {
+    title.textContent = statusNote ? `${base} · ${statusNote}` : base;
+  }
+  if (pathEl) {
+    pathEl.textContent = `${artifact.path}  ·  ${artifact.node_title || "节点"}`;
+  }
+}
+
+async function selectDeliveryArtifact(
+  artifact: DeliveryArtifact,
+  opts?: { syncNodePanel?: boolean },
+): Promise<void> {
+  const key = deliveryArtifactKey(artifact);
+  state.selectedDeliveryKey = key;
+  state.deliveryAgentId = artifact.agent_id;
+  state.deliveryPath = artifact.path;
+  state.deliveryContent = "";
+  state.deliveryMissing = !artifact.exists;
+  const generation = ++state.deliveryPreviewGeneration;
+
+  renderDeliveryArtifactCards(state.deliveryArtifacts);
+  setDeliveryReaderMeta(artifact, artifact.exists ? "加载中…" : "文件缺失");
+  syncDeliveryToolbar();
+
+  const body = document.getElementById("task-delivery-reader-body");
+  if (body) {
+    body.classList.add("fmt-host");
+    body.innerHTML = `<div style="padding:14px 0; display:flex; flex-direction:column; gap:8px;">
+      <span class="skeleton-line" style="width:62%;"></span>
+      <span class="skeleton-line" style="width:88%;"></span>
+      <span class="skeleton-line" style="width:48%;"></span>
+      <span class="skeleton-line" style="width:74%;"></span>
+    </div>`;
+  }
+
+  if (opts?.syncNodePanel !== false) {
+    state.selectedNodeId = artifact.node_id;
+    renderDagPanel();
+    // Keep node panel in sync without stealing focus from the delivery reader.
+    void loadArtifactForNode(artifact.node_id).then(() => {
+      if (state.artifactPaths.includes(artifact.path)) {
+        void selectArtifactPath(artifact.path);
+      }
+    });
+  }
+
+  if (!artifact.exists) {
+    if (body) {
+      body.innerHTML = `<div class="fmt-empty">产物文件尚未生成或不存在。\n\n路径: ${escapeHtml(artifact.path)}\n来源节点: ${escapeHtml(artifact.node_title || artifact.node_id)}\n\n可尝试「Finder」打开对应 workspace 目录确认。</div>`;
+    }
+    setDeliveryReaderMeta(artifact, "缺失");
+    syncDeliveryToolbar();
+    return;
+  }
+
+  if (!artifact.agent_id) {
+    state.deliveryMissing = true;
+    if (body) {
+      body.innerHTML = `<div class="fmt-empty">无法读取产物：节点未绑定 Agent。\n\n路径: ${escapeHtml(artifact.path)}</div>`;
+    }
+    setDeliveryReaderMeta(artifact, "无法读取");
+    syncDeliveryToolbar();
+    return;
+  }
+
+  try {
+    const file = await readWorkspaceFile(artifact.agent_id, artifact.path);
+    if (generation !== state.deliveryPreviewGeneration) return;
+    state.deliveryContent = file.content;
+    state.deliveryMissing = false;
+    setFormattedContent(body, file.content, artifact.path);
+    setDeliveryReaderMeta(artifact);
+    syncDeliveryToolbar();
+    // If expand overlay is open, refresh it too.
+    const overlay = document.getElementById("artifact-expand-overlay");
+    if (overlay && !overlay.hidden) {
+      openArtifactExpand({
+        title: pathBasename(artifact.path),
+        path: artifact.path,
+        content: file.content,
+      });
+    }
+  } catch (e) {
+    if (generation !== state.deliveryPreviewGeneration) return;
+    const msg = e instanceof Error ? e.message : String(e);
+    state.deliveryContent = "";
+    state.deliveryMissing = true;
+    if (body) {
+      body.innerHTML = `<div class="fmt-empty">无法读取产物: ${escapeHtml(msg)}\n\n相对路径: ${escapeHtml(artifact.path)}\n可点「Finder」打开 workspace / artifacts 目录。</div>`;
+    }
+    setDeliveryReaderMeta(artifact, "读取失败");
+    syncDeliveryToolbar();
+  }
+}
+
+function openArtifactExpand(opts: {
+  title: string;
+  path: string;
+  content: string;
+}): void {
+  const overlay = document.getElementById("artifact-expand-overlay");
+  const titleEl = document.getElementById("artifact-expand-title");
+  const pathEl = document.getElementById("artifact-expand-path");
+  const body = document.getElementById("artifact-expand-body");
+  if (!overlay || !body) return;
+  if (titleEl) titleEl.textContent = opts.title;
+  if (pathEl) pathEl.textContent = opts.path;
+  setFormattedContent(body, opts.content, opts.path);
+  overlay.hidden = false;
+  overlay.setAttribute("aria-hidden", "false");
+  document.body.classList.add("artifact-expand-open");
+}
+
+function closeArtifactExpand(): void {
+  const overlay = document.getElementById("artifact-expand-overlay");
+  if (!overlay) return;
+  overlay.hidden = true;
+  overlay.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("artifact-expand-open");
+}
+
 function renderDeliveryReport(run: TaskRun | null): void {
   const summary = document.getElementById("task-delivery-summary");
   const status = document.getElementById("task-delivery-status");
   const files = document.getElementById("task-delivery-files");
-  const artifacts = document.getElementById("task-delivery-artifacts");
   const verification = document.getElementById("task-delivery-verification");
   const risks = document.getElementById("task-delivery-risks");
   const diffDetails = document.getElementById("task-delivery-diff-details");
@@ -173,7 +416,7 @@ function renderDeliveryReport(run: TaskRun | null): void {
   const artifactsCount = document.getElementById("task-delivery-artifacts-count");
   const verificationCount = document.getElementById("task-delivery-verification-count");
   const risksCount = document.getElementById("task-delivery-risks-count");
-  if (!summary || !status || !files || !artifacts || !verification || !risks) return;
+  if (!summary || !status || !files || !verification || !risks) return;
 
   const report = parseDeliveryReport(run);
   const active = run?.status === "running" || run?.status === "queued";
@@ -182,15 +425,16 @@ function renderDeliveryReport(run: TaskRun | null): void {
     status.classList.add("delivery-status-pending");
     status.textContent = "生成中";
     summary.innerHTML = renderMarkdownInlineBlock(
-      "任务执行中；完成后会自动生成验收摘要、改动 Diff、产物入口、验证结果和风险说明。",
+      "任务执行中；完成后会自动生成验收摘要、改动 Diff、最终产物、验证结果和风险说明。",
     );
-    files.innerHTML = artifacts.innerHTML = verification.innerHTML = risks.innerHTML =
-      '<div>任务完成后自动生成</div>';
+    files.innerHTML = verification.innerHTML = risks.innerHTML =
+      '<div class="delivery-empty">任务完成后自动生成</div>';
     if (filesCount) filesCount.textContent = "—";
     if (artifactsCount) artifactsCount.textContent = "—";
     if (verificationCount) verificationCount.textContent = "—";
     if (risksCount) risksCount.textContent = "—";
     if (diffDetails) diffDetails.style.display = "none";
+    clearDeliveryReader("任务完成后自动汇总最终产物，并支持直接预览。");
     return;
   }
   if (!report) {
@@ -201,29 +445,35 @@ function renderDeliveryReport(run: TaskRun | null): void {
         ? "该历史任务尚未生成验收报告。重新执行后会自动补齐。"
         : "选择一个任务后，这里会自动汇总结果摘要、改动、产物、验证与风险。",
     );
-    files.innerHTML = artifacts.innerHTML = verification.innerHTML = risks.innerHTML = "<div>—</div>";
+    files.innerHTML = verification.innerHTML = risks.innerHTML =
+      '<div class="delivery-empty">—</div>';
     if (filesCount) filesCount.textContent = "0";
     if (artifactsCount) artifactsCount.textContent = "0";
     if (verificationCount) verificationCount.textContent = "0";
     if (risksCount) risksCount.textContent = "0";
     if (diffDetails) diffDetails.style.display = "none";
+    clearDeliveryReader(
+      run
+        ? "该历史任务尚无最终产物清单。"
+        : "选择任务后，最终产物会显示在这里，可直接阅读。",
+    );
     return;
   }
 
   const hasFailure = run?.status === "failed" || run?.status === "cancelled";
   status.classList.add(hasFailure ? "delivery-status-failed" : "delivery-status-ready");
   status.textContent = hasFailure ? "需关注" : "可验收";
-  summary.innerHTML = renderMarkdownInlineBlock(report.summary);
+  summary.innerHTML = renderDeliverySummary(report.summary);
 
   if (filesCount) filesCount.textContent = String(report.changed_files.length);
   files.innerHTML = report.changed_files.length
     ? report.changed_files
         .map(
           (file) =>
-            `<div class="delivery-file-row"><span class="delivery-file-status">${escapeHtml(file.status)}</span><code>${escapeHtml(file.path)}</code><span style="color:var(--fg-muted);">· ${escapeHtml(file.workspace)}</span></div>`,
+            `<div class="delivery-file-row"><span class="delivery-file-status">${escapeHtml(file.status)}</span><code>${escapeHtml(file.path)}</code><span class="delivery-meta">· ${escapeHtml(file.workspace)}</span></div>`,
         )
         .join("")
-    : "<div>未检测到 Git 改动</div>";
+    : '<div class="delivery-empty">未检测到 Git 改动</div>';
   if (diffDetails && diff) {
     diffDetails.style.display = report.diff ? "block" : "none";
     if (report.diff) {
@@ -233,35 +483,94 @@ function renderDeliveryReport(run: TaskRun | null): void {
     }
   }
 
+  state.deliveryArtifacts = report.artifacts;
   if (artifactsCount) artifactsCount.textContent = String(report.artifacts.length);
-  artifacts.innerHTML = report.artifacts.length
-    ? report.artifacts
-        .map(
-          (artifact) =>
-            `<div class="delivery-file-row"><span class="delivery-check ${artifact.exists ? "passed" : "failed"}">${artifact.exists ? "✓" : "!"}</span><button type="button" class="delivery-artifact-link" data-delivery-node="${escapeHtml(artifact.node_id)}" data-delivery-path="${escapeHtml(artifact.path)}">${escapeHtml(artifact.path)}</button><span style="color:var(--fg-muted);">· ${escapeHtml(artifact.node_title)}</span></div>`,
-        )
-        .join("")
-    : "<div>未发现已登记产物</div>";
+  renderDeliveryArtifactCards(report.artifacts);
+
+  // Prefer previously selected artifact if still present; else first existing; else first.
+  const preferred =
+    report.artifacts.find((a) => deliveryArtifactKey(a) === state.selectedDeliveryKey) ||
+    report.artifacts.find((a) => a.exists) ||
+    report.artifacts[0] ||
+    null;
+  if (preferred) {
+    const key = deliveryArtifactKey(preferred);
+    const alreadyLoaded =
+      key === state.selectedDeliveryKey &&
+      Boolean(state.deliveryContent) &&
+      !state.deliveryMissing;
+    if (alreadyLoaded) {
+      setDeliveryReaderMeta(preferred);
+      syncDeliveryToolbar();
+    } else {
+      void selectDeliveryArtifact(preferred, { syncNodePanel: false });
+    }
+  } else {
+    clearDeliveryReader("未发现已登记产物");
+    state.deliveryArtifacts = [];
+  }
 
   if (verificationCount) verificationCount.textContent = String(report.verification.length);
   verification.innerHTML = report.verification.length
     ? report.verification
         .map(
           (item) =>
-            `<div class="delivery-verification-row"><span class="delivery-check ${escapeHtml(item.status)}">${item.status === "passed" ? "✓" : item.status === "failed" ? "×" : "!"}</span><div class="delivery-verification-text"><div class="delivery-verification-label">${escapeHtml(item.label)}</div><div class="delivery-verification-detail">${renderMarkdownInlineBlock(item.detail)}</div></div></div>`,
+            `<div class="delivery-verification-row"><span class="delivery-check ${escapeHtml(item.status)}">${item.status === "passed" ? "✓" : item.status === "failed" ? "×" : "!"}</span><div class="delivery-verification-text"><div class="delivery-verification-label">${escapeHtml(item.label)}</div><div class="delivery-verification-detail">${renderMarkdownInlineBlock(sanitizeDeliveryText(item.detail))}</div></div></div>`,
         )
         .join("")
-    : "<div>暂无验证结果</div>";
+    : '<div class="delivery-empty">暂无验证结果</div>';
 
   if (risksCount) risksCount.textContent = String(report.risks.length);
   risks.innerHTML = report.risks.length
     ? report.risks
         .map(
           (risk) =>
-            `<div class="delivery-risk-row"><span>⚠</span><div class="delivery-risk-text">${renderMarkdownInlineBlock(risk)}</div></div>`,
+            `<div class="delivery-risk-row"><span class="delivery-risk-icon">⚠</span><div class="delivery-risk-text">${renderMarkdownInlineBlock(sanitizeDeliveryText(risk))}</div></div>`,
         )
         .join("")
-    : '<div style="color:var(--accent-emerald);">未发现额外风险</div>';
+    : '<div class="delivery-empty delivery-empty-ok">未发现额外风险</div>';
+}
+
+/** Drop leftover prompt-template / marker noise from older stored reports. */
+function sanitizeDeliveryText(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line) return false;
+      if (/AGENT(?:FLOW|MIND)_(?:SUMMARY|VERIFY|RISK|ARTIFACT)\s*:/i.test(line)) {
+        return false;
+      }
+      if (
+        /<one-sentence|<check name>|<what you checked>|<remaining risk|<workspace-relative|or omit this line|Keep using AGENT/i.test(
+          line,
+        )
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .join("\n")
+    .trim();
+}
+
+function renderDeliverySummary(raw: string): string {
+  const cleaned = sanitizeDeliveryText(raw);
+  if (!cleaned) {
+    return renderMarkdownInlineBlock("暂无结果摘要");
+  }
+  // Normalize plain multi-line dumps into a readable markdown list.
+  const lines = cleaned
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length <= 1) {
+    return renderMarkdownInlineBlock(lines[0] || cleaned);
+  }
+  const asList = lines
+    .map((line) => (/^[-*+]\s+/.test(line) || /^\d+\.\s+/.test(line) ? line : `- ${line}`))
+    .join("\n");
+  return renderMarkdownInlineBlock(asList);
 }
 
 function renderArtifactList(): void {
@@ -283,9 +592,19 @@ function renderArtifactList(): void {
           : "";
       const missingTag =
         path === state.selectedArtifactPath && state.artifactMissing
-          ? ' <span style="opacity:0.75;">(缺失)</span>'
+          ? '<span class="artifact-path-missing-tag">缺失</span>'
           : "";
-      return `<button type="button" class="artifact-path-item${active}${missing}" role="option" data-artifact-path="${escapeHtml(path)}" aria-selected="${path === state.selectedArtifactPath}">${escapeHtml(path)}${missingTag}</button>`;
+      const base = pathBasename(path);
+      const dir = pathDirname(path);
+      const badge = pathExtBadge(path);
+      return `<button type="button" class="artifact-path-item${active}${missing}" role="option" data-artifact-path="${escapeHtml(path)}" aria-selected="${path === state.selectedArtifactPath}" title="${escapeHtml(path)}">
+        <span class="artifact-path-item-row">
+          <span class="delivery-artifact-ext">${escapeHtml(badge)}</span>
+          <span class="artifact-path-item-name">${escapeHtml(base)}</span>
+          ${missingTag}
+        </span>
+        ${dir ? `<span class="artifact-path-item-dir">${escapeHtml(dir)}</span>` : ""}
+      </button>`;
     })
     .join("");
 
@@ -387,6 +706,13 @@ async function loadArtifactForNode(nodeId: string): Promise<void> {
 }
 
 async function openDeliveryArtifact(nodeId: string, path: string): Promise<void> {
+  const fromReport = state.deliveryArtifacts.find(
+    (a) => a.node_id === nodeId && a.path === path,
+  );
+  if (fromReport) {
+    await selectDeliveryArtifact(fromReport, { syncNodePanel: true });
+    return;
+  }
   state.selectedNodeId = nodeId;
   renderDagPanel();
   await loadArtifactForNode(nodeId);
@@ -395,16 +721,16 @@ async function openDeliveryArtifact(nodeId: string, path: string): Promise<void>
   }
 }
 
-async function onRevealArtifact(): Promise<void> {
-  if (!state.artifactAgentId || !state.selectedArtifactPath) {
+async function revealArtifactAt(
+  agentId: string | null,
+  relativePath: string | null,
+): Promise<void> {
+  if (!agentId || !relativePath) {
     showToast("请先选择有产物路径的节点");
     return;
   }
   try {
-    const result = await revealWorkspaceArtifact(
-      state.artifactAgentId,
-      state.selectedArtifactPath,
-    );
+    const result = await revealWorkspaceArtifact(agentId, relativePath);
     if (result.existed) {
       showToast("已在 Finder 中定位产物文件");
     } else if (result.fallback) {
@@ -417,6 +743,49 @@ async function onRevealArtifact(): Promise<void> {
       `打开 Finder 失败: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
+}
+
+async function onRevealArtifact(): Promise<void> {
+  await revealArtifactAt(state.artifactAgentId, state.selectedArtifactPath);
+}
+
+async function onRevealDeliveryArtifact(): Promise<void> {
+  await revealArtifactAt(state.deliveryAgentId, state.deliveryPath);
+}
+
+function copyText(content: string, emptyMsg: string): void {
+  if (!content) {
+    showToast(emptyMsg);
+    return;
+  }
+  void navigator.clipboard.writeText(content).then(
+    () => showToast("已复制产物到剪贴板！"),
+    () => showToast("复制失败"),
+  );
+}
+
+function expandCurrentDeliveryArtifact(): void {
+  if (!state.deliveryContent || state.deliveryMissing) {
+    showToast("没有可预览的产物内容");
+    return;
+  }
+  openArtifactExpand({
+    title: pathBasename(state.deliveryPath || "产物预览"),
+    path: state.deliveryPath || "—",
+    content: state.deliveryContent,
+  });
+}
+
+function expandCurrentNodeArtifact(): void {
+  if (!state.artifactContent || state.artifactMissing) {
+    showToast(state.artifactMissing ? "产物文件缺失，无法预览" : "无产物可预览");
+    return;
+  }
+  openArtifactExpand({
+    title: pathBasename(state.selectedArtifactPath || "产物预览"),
+    path: state.selectedArtifactPath || "—",
+    content: state.artifactContent,
+  });
 }
 
 function renderHistory(): void {
@@ -440,8 +809,8 @@ function renderHistory(): void {
     list.innerHTML = `
       <div style="padding:16px 12px; font-size:12px; color:var(--fg-muted); text-align:center;">
         <div style="font-weight:600; color:var(--fg-primary); margin-bottom:6px;">暂无任务运行</div>
-        <div style="margin-bottom:10px;">从调度中枢 Orchestrate → Dispatch 后，历史会出现在这里。</div>
-        <button type="button" class="btn btn-secondary btn-sm" id="tasks-empty-cta">打开调度中枢</button>
+        <div style="margin-bottom:10px;">从调度 Orchestrate → Dispatch 后，历史会出现在这里。</div>
+        <button type="button" class="btn btn-secondary btn-sm" id="tasks-empty-cta">打开调度</button>
       </div>`;
     list.querySelector("#tasks-empty-cta")?.addEventListener("click", () => {
       void import("../router").then((m) => m.showView("commander"));
@@ -520,8 +889,19 @@ async function selectRun(
     expectedRefreshGeneration === state.historyRefreshGeneration;
 
   if (!isCurrentRefresh()) return;
+  const runChanged = state.selectedRunId !== runId;
   state.selectedRunId = runId;
   state.logFilter = "all";
+  if (runChanged) {
+    // Avoid reusing previous run's preview content when keys collide.
+    state.selectedDeliveryKey = null;
+    state.deliveryContent = "";
+    state.deliveryMissing = false;
+    state.deliveryAgentId = null;
+    state.deliveryPath = null;
+    state.deliveryPreviewGeneration += 1;
+    closeArtifactExpand();
+  }
   if (state.cancelling) {
     // keep cancelling flag only while the same run is still active
   }
@@ -621,17 +1001,7 @@ async function onDeleteRun(runId: string): Promise<void> {
 
   const run = state.runs.find((r) => r.id === runId);
   const label = runDisplayName(run, runId);
-  const active =
-    run && (run.status === "running" || run.status === "queued");
-  const msg = active
-    ? `任务「${label}」仍在执行，删除将取消并清除记录。确定？`
-    : `确定删除任务「${label}」？节点与日志将一并清除。`;
   try {
-    const confirmed = await confirmAction(msg, {
-      title: "删除执行历史",
-      confirmLabel: "删除",
-    });
-    if (!confirmed) return;
     const refreshGenerationAtDelete = state.historyRefreshGeneration;
     state.deletedRunIds.add(runId);
     await deleteTaskRun(runId);
@@ -663,14 +1033,8 @@ async function onClearHistory(): Promise<void> {
     showToast("暂无执行历史");
     return;
   }
-  const n = state.runs.length;
   let refreshGenerationAtClear: number | null = null;
   try {
-    const confirmed = await confirmAction(
-      `确定清空全部 ${n} 条执行历史？进行中的任务也会被取消并删除。`,
-      { title: "清空执行历史", confirmLabel: "全部清空" },
-    );
-    if (!confirmed) return;
     refreshGenerationAtClear = state.historyRefreshGeneration;
     for (const r of state.runs) state.deletedRunIds.add(r.id);
     const deleted = await clearTaskRuns();
@@ -888,21 +1252,71 @@ export function initTaskCenter(): void {
     );
   });
   document.getElementById("btn-copy-artifact")?.addEventListener("click", () => {
-    if (!state.artifactContent) {
-      showToast(state.artifactMissing ? "产物文件缺失，无法复制" : "无产物可复制");
-      return;
-    }
-    void navigator.clipboard.writeText(state.artifactContent).then(
-      () => showToast("已复制产物到剪贴板！"),
-      () => showToast("复制失败"),
+    copyText(
+      state.artifactContent,
+      state.artifactMissing ? "产物文件缺失，无法复制" : "无产物可复制",
     );
   });
+  document.getElementById("btn-expand-node-artifact")?.addEventListener("click", () => {
+    expandCurrentNodeArtifact();
+  });
   document.getElementById("task-delivery-panel")?.addEventListener("click", (ev) => {
-    const target = eventElement(ev)?.closest("[data-delivery-node]");
+    const target = eventElement(ev)?.closest("[data-delivery-key], [data-delivery-node]");
     if (!(target instanceof HTMLElement)) return;
+    // Ignore toolbar clicks inside the reader.
+    if (target.closest(".delivery-artifacts-toolbar")) return;
     const nodeId = target.getAttribute("data-delivery-node");
     const path = target.getAttribute("data-delivery-path");
     if (nodeId && path) void openDeliveryArtifact(nodeId, path);
+  });
+  document.getElementById("btn-delivery-reveal")?.addEventListener("click", () => {
+    void onRevealDeliveryArtifact();
+  });
+  document.getElementById("btn-delivery-copy")?.addEventListener("click", () => {
+    copyText(
+      state.deliveryContent,
+      state.deliveryMissing ? "产物文件缺失，无法复制" : "无产物可复制",
+    );
+  });
+  document.getElementById("btn-delivery-expand")?.addEventListener("click", () => {
+    expandCurrentDeliveryArtifact();
+  });
+  document.getElementById("btn-expand-close")?.addEventListener("click", () => {
+    closeArtifactExpand();
+  });
+  document.getElementById("btn-expand-copy")?.addEventListener("click", () => {
+    const content = state.deliveryContent || state.artifactContent;
+    copyText(content, "无产物可复制");
+  });
+  document.getElementById("btn-expand-reveal")?.addEventListener("click", () => {
+    if (state.deliveryAgentId && state.deliveryPath) {
+      void onRevealDeliveryArtifact();
+      return;
+    }
+    void onRevealArtifact();
+  });
+  document.getElementById("artifact-expand-overlay")?.addEventListener("click", (ev) => {
+    if (ev.target === ev.currentTarget) closeArtifactExpand();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") closeArtifactExpand();
+  });
+  document.getElementById("btn-toggle-delivery-details")?.addEventListener("click", () => {
+    const body = document.getElementById("task-delivery-details");
+    const btn = document.getElementById(
+      "btn-toggle-delivery-details",
+    ) as HTMLButtonElement | null;
+    if (!body || !btn) return;
+    const open = body.hasAttribute("hidden");
+    if (open) {
+      body.removeAttribute("hidden");
+      btn.setAttribute("aria-expanded", "true");
+      btn.textContent = "详情 ▴";
+    } else {
+      body.setAttribute("hidden", "");
+      btn.setAttribute("aria-expanded", "false");
+      btn.textContent = "详情 ▾";
+    }
   });
   document
     .getElementById("btn-reveal-artifact")

@@ -40,8 +40,8 @@ pub fn dispatch_plan_for_schedule(
 
     // Re-validate structural constraints + hard runtime preflight before any writes.
     let validated = validate_plan(conn, analysis)?;
-    let _ = preflight_for_dispatch(&validated.plan)?;
-    let analysis = validated.plan;
+    let mut analysis = validated.plan;
+    let _ = preflight_for_dispatch(&mut analysis)?;
     let agents = list_agents(conn)?;
 
     let tx = conn

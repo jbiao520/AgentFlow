@@ -93,12 +93,19 @@ pub fn polish_template_blocking(
         Err(e) => return fail(None, e),
     };
     let prompt = build_polish_prompt(goal_prompt, plan_json);
+    let model = Some(settings.model.clone()).filter(|m| !m.is_empty());
+    let reasoning = crate::services::cli_models::effective_reasoning_effort(
+        &settings.cli_engine,
+        model.as_deref(),
+        Some(settings.reasoning_effort.as_str()),
+    );
     let req = EngineRunRequest {
         engine: settings.cli_engine.clone(),
         cwd,
         prompt,
-        model: Some(settings.model.clone()).filter(|m| !m.is_empty()),
-        reasoning: Some(settings.reasoning_effort.clone()).filter(|r| !r.is_empty()),
+        model,
+        reasoning,
+        fast: settings.use_fast,
         extra_args: vec![],
         env: HashMap::new(),
         stream_output: false,

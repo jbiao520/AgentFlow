@@ -78,6 +78,24 @@ export function closeSkillDetailModal(event?: Event): void {
   document.getElementById("skill-modal")?.classList.remove("active");
 }
 
+export function openUsageDetailModal(): void {
+  const modal = document.getElementById("usage-detail-modal");
+  if (!modal) return;
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+  requestAnimationFrame(() => {
+    document.getElementById("usage-detail-close")?.focus();
+  });
+}
+
+export function closeUsageDetailModal(event?: Event): void {
+  if (event && !isOverlayClick(event, "usage-detail-modal")) return;
+  const modal = document.getElementById("usage-detail-modal");
+  if (!modal) return;
+  modal.classList.remove("active");
+  modal.setAttribute("aria-hidden", "true");
+}
+
 function settleConfirmAction(confirmed: boolean): void {
   const resolver = confirmResolver;
   if (!resolver) return;
@@ -174,6 +192,16 @@ export function bindModals(): void {
     .querySelector("#skill-modal .modal-card")
     ?.addEventListener("click", (e) => e.stopPropagation());
 
+  document.getElementById("usage-detail-modal")?.addEventListener("click", (e) => {
+    closeUsageDetailModal(e);
+  });
+  document
+    .querySelector("#usage-detail-modal .modal-card")
+    ?.addEventListener("click", (e) => e.stopPropagation());
+  document
+    .getElementById("usage-detail-close")
+    ?.addEventListener("click", () => closeUsageDetailModal());
+
   document.getElementById("confirm-modal")?.addEventListener("click", (e) => {
     if (isOverlayClick(e, "confirm-modal")) settleConfirmAction(false);
   });
@@ -209,10 +237,35 @@ export function bindModals(): void {
       openCmdKModal();
     }
     if (e.key === "Escape") {
+      // Always consume Escape in-app. On macOS, an unhandled Esc bubbles to
+      // the system and exits native fullscreen (especially with focused inputs).
+      e.preventDefault();
+
+      const hadOverlay =
+        !!confirmResolver ||
+        document.getElementById("cmdk-modal")?.classList.contains("active") ||
+        document.getElementById("import-modal")?.classList.contains("active") ||
+        document.getElementById("skill-modal")?.classList.contains("active") ||
+        document.getElementById("usage-detail-modal")?.classList.contains("active") ||
+        document.getElementById("confirm-modal")?.classList.contains("active");
+
       settleConfirmAction(false);
       closeCmdKModal();
       closeImportModal();
       closeSkillDetailModal();
+      closeUsageDetailModal();
+
+      // No overlay: blur focused field (e.g. agent search) so Esc feels local.
+      if (!hadOverlay) {
+        const active = document.activeElement;
+        if (
+          active instanceof HTMLInputElement ||
+          active instanceof HTMLTextAreaElement ||
+          active instanceof HTMLSelectElement
+        ) {
+          active.blur();
+        }
+      }
     }
   });
 }

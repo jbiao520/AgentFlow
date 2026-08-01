@@ -2,6 +2,7 @@
  * Schedule IPC wrappers — timed template runs.
  */
 import { invoke } from "@tauri-apps/api/core";
+import type { TaskRun } from "./tasks";
 
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -37,6 +38,19 @@ export type Schedule = {
 export async function listSchedules(): Promise<Schedule[]> {
   if (!isTauri()) return [];
   return invoke<Schedule[]>("list_schedules");
+}
+
+export async function listScheduleRuns(
+  scheduleId: string,
+  limit = 20,
+  offset = 0,
+): Promise<TaskRun[]> {
+  if (!isTauri()) return [];
+  return invoke<TaskRun[]>("list_schedule_runs", {
+    scheduleId,
+    limit,
+    offset,
+  });
 }
 
 export async function getSchedule(id: string): Promise<Schedule | null> {

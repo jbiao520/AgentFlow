@@ -5,9 +5,9 @@ import { initOrchestratorSettings, loadOrchestratorSettings } from "../orchestra
 import { initSettingsAbout, refreshSettingsAbout } from "./about";
 import { initSettingsCli, refreshCliWidget } from "./cli";
 
-export type SettingsSection = "brain" | "cli" | "about";
+export type SettingsSection = "brain" | "cli" | "about" | "language";
 
-const SECTIONS: readonly SettingsSection[] = ["brain", "cli", "about"] as const;
+const SECTIONS: readonly SettingsSection[] = ["brain", "cli", "about", "language"] as const;
 
 let currentSection: SettingsSection = "brain";
 let brainInited = false;

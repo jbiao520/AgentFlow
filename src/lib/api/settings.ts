@@ -12,6 +12,7 @@ export type OrchestratorSettings = {
   cli_engine: string;
   model: string;
   reasoning_effort: string;
+  use_fast: boolean;
   updated_at: string;
 };
 
@@ -19,6 +20,7 @@ export type OrchestratorSettingsUpdate = {
   cli_engine: string;
   model: string;
   reasoning_effort: string;
+  use_fast: boolean;
 };
 
 const DEFAULT_SETTINGS: OrchestratorSettings = {
@@ -26,6 +28,7 @@ const DEFAULT_SETTINGS: OrchestratorSettings = {
   cli_engine: "codex",
   model: "sol",
   reasoning_effort: "medium",
+  use_fast: false,
   updated_at: new Date(0).toISOString(),
 };
 

@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 
 const SCHEMA_SQL: &str = include_str!("schema.sql");
-const SCHEMA_VERSION: i32 = 7;
+const SCHEMA_VERSION: i32 = 8;
 
 /// Idempotent schema migration to current version. Seeds orchestrator_settings id=1 if missing.
 pub fn migrate(conn: &Connection) -> Result<(), String> {
@@ -28,6 +28,7 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
         migrate_v5_task_run_delivery_report(conn, current)?;
         migrate_v6_schedules(conn, current)?;
         migrate_v7_task_run_manual(conn, current)?;
+        migrate_v8_orchestrator_use_fast(conn, current)?;
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations(version) VALUES (?1)",
             [SCHEMA_VERSION],
@@ -36,6 +37,21 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
     }
 
     seed_orchestrator_settings(conn)?;
+    Ok(())
+}
+
+/// v8: Cursor Fast mode flag on orchestrator brain settings.
+fn migrate_v8_orchestrator_use_fast(conn: &Connection, from_version: i32) -> Result<(), String> {
+    if from_version >= 8 {
+        return Ok(());
+    }
+    if !table_has_column(conn, "orchestrator_settings", "use_fast")? {
+        conn.execute(
+            "ALTER TABLE orchestrator_settings ADD COLUMN use_fast INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| format!("migrate v8 orchestrator_settings.use_fast: {e}"))?;
+    }
     Ok(())
 }
 
@@ -343,6 +359,6 @@ mod tests {
                 r.get(0)
             })
             .expect("version");
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
     }
 }

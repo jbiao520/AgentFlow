@@ -1,5 +1,5 @@
 import type { Agent } from "../../lib/api/agents";
-import { listAgents } from "../../lib/api/agents";
+import { listAgents, syncAgentSkills } from "../../lib/api/agents";
 import { selectAgentById } from "../router";
 import { showToast } from "../toast";
 import { getCachedAgents, setCachedAgents } from "./state";
@@ -120,6 +120,52 @@ export function filterAgents(): void {
   }
 }
 
+async function syncAllAgentSkills(): Promise<void> {
+  const button = document.getElementById(
+    "btn-sync-all-agents",
+  ) as HTMLButtonElement | null;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Sync 中...";
+  }
+
+  try {
+    const agents = await listAgents();
+    let added = 0;
+    let updated = 0;
+    let removed = 0;
+    let failed = 0;
+
+    for (const agent of agents) {
+      try {
+        const result = await syncAgentSkills(agent.id);
+        added += result.added;
+        updated += result.updated;
+        removed += result.removed;
+      } catch {
+        // Keep syncing the remaining workspaces when one path is unavailable.
+        failed++;
+      }
+    }
+
+    await refreshAgentMatrix();
+    const suffix = failed ? `，${failed} 个失败` : "";
+    showToast(`Sync 完成：+${added} / ~${updated} / -${removed}${suffix}`, {
+      kind: failed ? "error" : "success",
+      durationMs: 5000,
+    });
+  } catch (e) {
+    showToast(`Sync 失败: ${e instanceof Error ? e.message : String(e)}`, {
+      kind: "error",
+    });
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Sync 全部 Agent";
+    }
+  }
+}
+
 function bindCardClicks(grid: HTMLElement): void {
   grid.querySelectorAll(".agent-card").forEach((card) => {
     const el = card as HTMLElement;
@@ -184,5 +230,10 @@ export async function refreshAgentMatrix(): Promise<void> {
 }
 
 export function initAgentMatrix(): void {
+  document
+    .getElementById("btn-sync-all-agents")
+    ?.addEventListener("click", () => {
+      void syncAllAgentSkills();
+    });
   void refreshAgentMatrix();
 }

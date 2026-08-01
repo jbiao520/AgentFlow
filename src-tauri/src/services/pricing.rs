@@ -1,7 +1,7 @@
 //! Per-model token pricing used to estimate cost when the CLI does not report it.
-//! OpenCode reports a real `cost`; Codex reports token counts only, so we fall
-//! back to these published-ish rates (USD per 1M tokens). All values are
-//! heuristic estimates and the UI labels them as such.
+//! OpenCode reports a real `cost`; Codex and cursor-agent report token counts
+//! only, so we fall back to these published-ish rates (USD per 1M tokens). All
+//! values are heuristic estimates and the UI labels them as such.
 use crate::engines::adapter::TokenUsage;
 
 #[derive(Debug, Clone, Copy)]
@@ -136,7 +136,7 @@ pub fn estimate_cost(engine: &str, model: &str, usage: &TokenUsage) -> Option<f6
         return None;
     }
     let price = lookup_price(model).unwrap_or(PRICE_FALLBACK);
-    // codex reports input_tokens *including* cached; opencode excludes them.
+    // codex reports input_tokens *including* cached; opencode / cursor-agent exclude them.
     let uncached = if engine == "codex" {
         usage
             .input_tokens

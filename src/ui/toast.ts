@@ -1,5 +1,7 @@
 /** Lightweight toast notifications with optional longer / error styling. */
 
+import { t } from "./i18n";
+
 export type ToastKind = "info" | "error" | "success";
 
 export type ToastAction = {
@@ -33,7 +35,7 @@ export function showToast(
   const dotStyle = dotColor ? ` style="background:${dotColor};"` : "";
   toast.innerHTML = `<span class="status-dot"${dotStyle}></span><span></span>`;
   const textSpan = toast.querySelector("span:last-child");
-  if (textSpan) textSpan.textContent = message;
+  if (textSpan) textSpan.textContent = t(message);
   container.appendChild(toast);
 
   window.setTimeout(() => {
@@ -60,7 +62,7 @@ export function showActionToast(
   dot.className = "status-dot";
   dot.style.background = kind === "success" ? "var(--accent-emerald)" : "#dc2626";
   const body = document.createElement("span");
-  body.textContent = message;
+  body.textContent = t(message);
   const actionBox = document.createElement("span");
   actionBox.className = "toast-actions";
   toast.append(dot, body, actionBox);
@@ -69,7 +71,7 @@ export function showActionToast(
     const button = document.createElement("button");
     button.type = "button";
     button.className = "toast-action-btn";
-    button.textContent = action.label;
+    button.textContent = t(action.label);
     button.addEventListener("click", () => {
       dismiss();
       void action.onClick();
@@ -93,17 +95,17 @@ export function formatActionableError(raw: string): string {
       lower.includes("no such file") ||
       lower.includes("command"))
   ) {
-    return `${msg} — 请安装对应 CLI，或点击侧栏左下角状态刷新探测。`;
+    return t(`${msg} — 请安装对应 CLI，或点击侧栏左下角状态刷新探测。`);
   }
   if (lower.includes("unavailable") || lower.includes("not available")) {
-    return `${msg} — CLI 不可用：安装后点击侧栏左下角状态刷新探测。`;
+    return t(`${msg} — CLI 不可用：安装后点击侧栏左下角状态刷新探测。`);
   }
   if (
     lower.includes("json") ||
     lower.includes("parse") ||
     lower.includes("schema")
   ) {
-    return `${msg} — 检查 Orchestrator 输出 JSON / 夹具格式（SPEC §7.4）。`;
+    return t(`${msg} — 检查 Orchestrator 输出 JSON 格式（SPEC §7.4）。`);
   }
   if (
     lower.includes("path") ||
@@ -111,10 +113,10 @@ export function formatActionableError(raw: string): string {
     lower.includes("permission denied") ||
     lower.includes("no such file or directory")
   ) {
-    return `${msg} — 确认 Workspace 路径存在且可读，或重新选择本地目录。`;
+    return t(`${msg} — 确认 Workspace 路径存在且可读，或重新选择本地目录。`);
   }
   if (lower.includes("clone") || lower.includes("git")) {
-    return `${msg} — 检查 Git URL / 网络，或改为绑定已有本地路径。`;
+    return t(`${msg} — 检查 Git URL / 网络，或改为绑定已有本地路径。`);
   }
   return msg;
 }

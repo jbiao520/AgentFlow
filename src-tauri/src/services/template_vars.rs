@@ -112,7 +112,26 @@ pub fn substitute_text(text: &str, values: &HashMap<String, String>) -> Result<S
     Ok(out)
 }
 
+/// Templates lock agent assignment (who runs a subtask), not how that agent runs.
+/// Clear snapshotted CLI/model/effort so `validate_plan` rebinds from the
+/// agent's *current* `default_cli` / preferred model profile at execute time.
+pub fn clear_subtask_runtime_routing(plan: &mut PlanAnalysis) {
+    for st in &mut plan.subtasks {
+        st.cli_engine = None;
+        st.model = None;
+        st.reasoning_effort = None;
+    }
+}
+
+/// Strip frozen CLI/model/effort from a plan JSON string (template save/load).
+pub fn strip_runtime_routing_from_plan_json(plan_json: &str) -> Result<String, String> {
+    let mut plan = parse_plan_json(plan_json)?;
+    clear_subtask_runtime_routing(&mut plan);
+    plan_to_analysis_json(&plan)
+}
+
 /// Apply variable values to goal prompt + plan prompts (structure unchanged).
+/// Also drops snapshotted runtime routing so agent config changes take effect.
 pub fn instantiate_texts(
     goal_prompt: &str,
     plan_json: &str,
@@ -126,6 +145,8 @@ pub fn instantiate_texts(
             st.prompt = Some(substitute_text(&p, values)?);
         }
     }
+    // Agent CLI/model may have changed since the template was saved — rebind later.
+    clear_subtask_runtime_routing(&mut plan);
     let out_json = plan_to_analysis_json(&plan)?;
     Ok((goal, out_json))
 }
@@ -404,5 +425,65 @@ mod tests {
         assert_eq!(goal, "Goal Nike");
         assert!(plan_json.contains("Collect Nike"));
         assert!(!plan_json.contains("{{topic}}"));
+    }
+
+    #[test]
+    fn instantiate_clears_frozen_cli_and_model() {
+        let plan = r#"{
+          "intent": {"summary": "Do {{topic}}", "tags": []},
+          "subtasks": [
+            {
+              "id": "t1",
+              "title": "Collect",
+              "agent": "research-collector",
+              "skills": ["web"],
+              "depends_on": [],
+              "cli_engine": "codex",
+              "model": "sol",
+              "reasoning_effort": "high",
+              "prompt": "Collect {{topic}}"
+            }
+          ]
+        }"#;
+        let mut vals = HashMap::new();
+        vals.insert("topic".into(), "phones".into());
+        let (_goal, out) = instantiate_texts("Goal {{topic}}", plan, &vals).unwrap();
+        let parsed = parse_plan_json(&out).unwrap();
+        assert!(parsed.subtasks[0].cli_engine.is_none());
+        assert!(parsed.subtasks[0].model.is_none());
+        assert!(parsed.subtasks[0].reasoning_effort.is_none());
+        assert_eq!(
+            parsed.subtasks[0].prompt.as_deref(),
+            Some("Collect phones")
+        );
+        // Agent assignment stays locked.
+        assert_eq!(parsed.subtasks[0].agent, "research-collector");
+    }
+
+    #[test]
+    fn strip_runtime_routing_preserves_agent_and_dag() {
+        let plan = r#"{
+          "intent": {"summary": "s", "tags": []},
+          "subtasks": [
+            {
+              "id": "t1",
+              "title": "Collect",
+              "agent": "research-collector",
+              "skills": ["web"],
+              "depends_on": [],
+              "cli_engine": "cursor-agent",
+              "model": "gpt-5",
+              "reasoning_effort": "medium",
+              "prompt": "do it"
+            }
+          ]
+        }"#;
+        let out = strip_runtime_routing_from_plan_json(plan).unwrap();
+        let parsed = parse_plan_json(&out).unwrap();
+        assert_eq!(parsed.subtasks[0].agent, "research-collector");
+        assert_eq!(parsed.subtasks[0].skills, vec!["web"]);
+        assert!(parsed.subtasks[0].cli_engine.is_none());
+        assert!(parsed.subtasks[0].model.is_none());
+        assert!(parsed.subtasks[0].reasoning_effort.is_none());
     }
 }

@@ -379,6 +379,34 @@ pub fn list_task_runs(conn: &Connection, limit: i64) -> Result<Vec<TaskRun>, Str
     Ok(rows)
 }
 
+/// List runs created by a particular schedule, newest first.
+pub fn list_task_runs_for_schedule(
+    conn: &Connection,
+    schedule_id: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<TaskRun>, String> {
+    let limit = if limit <= 0 { 20 } else { limit.min(200) };
+    let offset = offset.max(0);
+    let mut stmt = conn
+        .prepare(
+            "SELECT tr.id, tr.goal_id, tr.plan_id, tr.status, tr.progress, tr.started_at,
+                    tr.finished_at, tr.error, NULL AS delivery_report_json, tr.schedule_id,
+                    tr.is_manual, g.prompt AS goal_prompt
+             FROM task_runs tr
+             LEFT JOIN goals g ON g.id = tr.goal_id
+             WHERE tr.schedule_id = ?1
+             ORDER BY COALESCE(tr.started_at, tr.finished_at) DESC, tr.id DESC
+             LIMIT ?2 OFFSET ?3",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![schedule_id, limit, offset], map_run)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>();
+    rows.map_err(|e| e.to_string())
+}
+
 /// Delete a run; nodes/logs cascade via FK. Returns false if id missing.
 pub fn delete_task_run(conn: &Connection, id: &str) -> Result<bool, String> {
     let n = conn

@@ -34,7 +34,7 @@ pub fn prepare(req: &EngineRunRequest) -> Result<PreparedCommand, String> {
             .as_ref()
             .map(|s| s.trim())
             .filter(|s| !s.is_empty());
-        let model_arg = compose_cursor_model_id(model, effort);
+        let model_arg = compose_cursor_model_id(model, effort, req.fast);
         args.push("--model".to_string());
         args.push(model_arg);
     }
@@ -58,6 +58,7 @@ mod tests {
             prompt: "hello".into(),
             model: Some("gpt-5.6-sol".into()),
             reasoning: Some("high".into()),
+            fast: false,
             extra_args: vec![],
             env: HashMap::new(),
             stream_output: false,
@@ -85,6 +86,7 @@ mod tests {
             prompt: "hello".into(),
             model: Some("auto".into()),
             reasoning: None,
+            fast: false,
             extra_args: vec![],
             env: HashMap::new(),
             stream_output: true,
@@ -106,12 +108,33 @@ mod tests {
             prompt: "hello".into(),
             model: Some("auto".into()),
             reasoning: Some("".into()),
+            fast: false,
             extra_args: vec![],
             env: HashMap::new(),
             stream_output: false,
         };
         if let Ok(cmd) = prepare(&req) {
             assert!(cmd.args.iter().any(|a| a == "auto"));
+            assert!(!cmd.args.iter().any(|a| a.contains("auto-")));
+        }
+    }
+
+    #[test]
+    fn composer_without_reasoning_has_no_suffix() {
+        let req = EngineRunRequest {
+            engine: "cursor-agent".into(),
+            cwd: "/tmp/ws".into(),
+            prompt: "hello".into(),
+            model: Some("composer-2.5".into()),
+            reasoning: None,
+            fast: false,
+            extra_args: vec![],
+            env: HashMap::new(),
+            stream_output: false,
+        };
+        if let Ok(cmd) = prepare(&req) {
+            assert!(cmd.args.iter().any(|a| a == "composer-2.5"));
+            assert!(!cmd.args.iter().any(|a| a == "composer-2.5-medium"));
         }
     }
 }

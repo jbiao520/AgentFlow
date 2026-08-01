@@ -95,13 +95,8 @@ async function resolveAgent(idOrName: string): Promise<Agent | null> {
 
 function applyDetailHeader(agent: Agent): void {
   const nameEl = document.getElementById("detail-agent-name");
-  const repoEl = document.getElementById("detail-agent-repo");
   const statusEl = document.getElementById("detail-agent-status");
   if (nameEl) nameEl.textContent = agent.name;
-  if (repoEl) {
-    const loc = agent.git_url || agent.workspace_path;
-    repoEl.textContent = `绑定工作区: ${loc}`;
-  }
   if (statusEl) {
     const working =
       agent.status.toLowerCase() === "working" ||

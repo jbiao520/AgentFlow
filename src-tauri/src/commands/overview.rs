@@ -27,7 +27,7 @@ pub struct OverviewStats {
     pub success_rate_today: f64,
     /// All-time tokens reported by CLI streams, grouped by engine/provider/model.
     pub tokens_total: u64,
-    /// Sum of real (opencode) + estimated (codex) cost in USD.
+    /// Sum of real (opencode) + estimated (codex / cursor-agent) cost in USD.
     pub tokens_cost: Option<f64>,
     pub usage_breakdown: Vec<UsageBreakdown>,
 }

@@ -247,11 +247,13 @@ pub fn validate_plan(
             .map(|s| s.trim().is_empty())
             .unwrap_or(true)
         {
+            // Only inherit agent profile effort — never invent a default like
+            // "medium". Models without reasoning (e.g. Cursor composer) break
+            // when a suffix is appended.
             st.reasoning_effort = profile
                 .as_ref()
                 .and_then(|p| p.reasoning_effort.clone())
-                .filter(|r| !r.trim().is_empty())
-                .or_else(|| Some("medium".into()));
+                .filter(|r| !r.trim().is_empty());
         }
         if st.prompt.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
             st.prompt = Some(st.title.clone());
@@ -305,7 +307,7 @@ pub fn validate_plan(
             let e = effort.trim();
             if !e.is_empty() && !is_known_reasoning_effort(e) {
                 return Err(format!(
-                    "subtask {}: unsupported reasoning_effort '{e}' (expected none|low|medium|high|xhigh|max|ultra)",
+                    "subtask {}: unsupported reasoning_effort '{e}' (expected none|minimal|low|medium|high|xhigh|extra-high|max|ultra)",
                     st.id
                 ));
             }
@@ -457,9 +459,12 @@ fn format_clarification_block(
 }
 
 /// Hard runtime preflight before Dispatch — CLI installed, model/effort in live catalog.
-pub fn preflight_for_dispatch(plan: &PlanAnalysis) -> Result<Vec<String>, String> {
-    let warnings = Vec::new();
-    for st in &plan.subtasks {
+///
+/// Mutates the plan: when a model advertises no efforts, clears any leftover
+/// `reasoning_effort` (profile defaults like `medium` must not become a suffix).
+pub fn preflight_for_dispatch(plan: &mut PlanAnalysis) -> Result<Vec<String>, String> {
+    let mut warnings = Vec::new();
+    for st in &mut plan.subtasks {
         let engine = st
             .cli_engine
             .as_deref()
@@ -492,12 +497,22 @@ pub fn preflight_for_dispatch(plan: &PlanAnalysis) -> Result<Vec<String>, String
                             ));
                         }
                         Some(m) => {
-                            if let Some(ref effort) = st.reasoning_effort {
-                                let e = effort.trim();
-                                if !e.is_empty()
-                                    && !m.efforts.is_empty()
-                                    && !m.efforts.iter().any(|x| x == e)
+                            if m.efforts.is_empty() {
+                                if st
+                                    .reasoning_effort
+                                    .as_ref()
+                                    .map(|e| !e.trim().is_empty())
+                                    .unwrap_or(false)
                                 {
+                                    warnings.push(format!(
+                                        "subtask {}: model '{model}' has no reasoning levels — clearing reasoning_effort",
+                                        st.id
+                                    ));
+                                    st.reasoning_effort = None;
+                                }
+                            } else if let Some(ref effort) = st.reasoning_effort {
+                                let e = effort.trim();
+                                if !e.is_empty() && !m.efforts.iter().any(|x| x == e) {
                                     return Err(format!(
                                         "subtask {}: reasoning_effort '{e}' not supported by model '{model}' (allowed: {})",
                                         st.id,
@@ -534,7 +549,15 @@ fn normalize_supported_engine(engine: &str) -> Result<&'static str, String> {
 fn is_known_reasoning_effort(effort: &str) -> bool {
     matches!(
         effort.to_lowercase().as_str(),
-        "none" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
+        "none"
+            | "minimal"
+            | "low"
+            | "medium"
+            | "high"
+            | "xhigh"
+            | "extra-high"
+            | "max"
+            | "ultra"
     )
 }
 
@@ -687,7 +710,7 @@ OUTPUT SCHEMA:
       "depends_on": [],
       "cli_engine": "cursor-agent|codex|opencode",
       "model": "...",
-      "reasoning_effort": "none|low|medium|high|xhigh|max|ultra",
+      "reasoning_effort": "none|minimal|low|medium|high|xhigh|extra-high|max|ultra",
       "prompt": "concrete instructions for the agent",
       "artifact_paths": ["relative/path.md"]
     }}

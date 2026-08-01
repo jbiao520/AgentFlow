@@ -342,6 +342,7 @@ mod tests {
             prompt: "say hi".into(),
             model: None,
             reasoning: None,
+            fast: false,
             extra_args: vec![],
             env: HashMap::new(),
             stream_output: true,

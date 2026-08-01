@@ -4,7 +4,6 @@
 import {
   confirmPlanAnswers,
   orchestrate,
-  orchestrateFromJson,
   type OrchestrateResult,
   type PlanAnalysis,
   type PlanClarification,
@@ -16,6 +15,7 @@ import {
   planSuggestedConcurrency,
   readConcurrencySelect,
 } from "../concurrency";
+import { destroySelectsIn, enhanceSelectsIn } from "../form";
 import { showView } from "../router";
 import { formatActionableError, showToast } from "../toast";
 
@@ -295,6 +295,7 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
     ? `${plan.subtasks.length} 个子任务 · 需回答 ${questions.length} 个澄清问题`
     : `${plan.subtasks.length} 个子任务 · 路由矩阵已就绪`;
 
+  destroySelectsIn(root);
   root.innerHTML = `
     <div class="orch-results-header">
       <div>
@@ -395,11 +396,14 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
         });
       });
   }
+
+  enhanceSelectsIn(root);
 }
 
 export function renderOrchestrateError(error: string, raw: string | null): void {
   const root = document.getElementById("orch-results");
   if (!root) return;
+  destroySelectsIn(root);
   const actionable = formatActionableError(error);
   const rawBlock = raw
     ? `<pre class="orch-error-raw">${escapeHtml(raw)}</pre>`
@@ -419,7 +423,7 @@ export function renderOrchestrateError(error: string, raw: string | null): void 
         <div class="step-content">
           <div class="step-title" style="color:#e11d48;">无法生成可分发的 Plan</div>
           <p class="step-body-text" style="margin-top:6px;">${escapeHtml(actionable)}</p>
-          <p class="step-muted">可尝试：安装 / 刷新 CLI · 修正 JSON 夹具 · 确认已注册 Agent 名称匹配。</p>
+          <p class="step-muted">可尝试：安装 / 刷新 CLI · 确认已注册 Agent 名称匹配。</p>
           ${rawBlock}
         </div>
       </div>
@@ -449,12 +453,7 @@ async function runOrchestrate(): Promise<void> {
   }
 
   try {
-    const fixture = (
-      document.getElementById("orch-fixture-json") as HTMLTextAreaElement | null
-    )?.value.trim();
-    const result = fixture
-      ? await orchestrateFromJson(goal, fixture)
-      : await orchestrate(goal);
+    const result = await orchestrate(goal);
 
     state.result = result;
     if (!result.ok || !result.plan) {

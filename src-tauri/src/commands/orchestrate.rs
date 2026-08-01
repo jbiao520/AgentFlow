@@ -172,12 +172,19 @@ pub async fn orchestrate(
     let _ = catalog; // used in prompt already
 
     let cwd = orchestrate_cwd()?;
+    let model = Some(settings.model.clone()).filter(|m| !m.is_empty());
+    let reasoning = crate::services::cli_models::effective_reasoning_effort(
+        &settings.cli_engine,
+        model.as_deref(),
+        Some(settings.reasoning_effort.as_str()),
+    );
     let req = EngineRunRequest {
         engine: settings.cli_engine.clone(),
         cwd,
         prompt,
-        model: Some(settings.model.clone()).filter(|m| !m.is_empty()),
-        reasoning: Some(settings.reasoning_effort.clone()).filter(|r| !r.is_empty()),
+        model,
+        reasoning,
+        fast: settings.use_fast,
         extra_args: vec![],
         env: HashMap::new(),
         // Keep text/final blob mode so Plan JSON can be parsed from stdout.

@@ -72,10 +72,16 @@ pub async fn sandbox_run(
             .as_ref()
             .and_then(|p| p.preferred_model.clone())
             .filter(|m| !m.trim().is_empty());
-        let reasoning = profile
-            .as_ref()
-            .and_then(|p| p.reasoning_effort.clone())
-            .filter(|r| !r.trim().is_empty());
+        let reasoning = crate::services::cli_models::effective_reasoning_effort(
+            &engine,
+            model.as_deref(),
+            profile.as_ref().and_then(|p| p.reasoning_effort.as_deref()),
+        );
+        let fast = crate::services::cli_models::engine_options_fast(
+            profile
+                .as_ref()
+                .and_then(|p| p.engine_options_json.as_deref()),
+        );
 
         EngineRunRequest {
             engine,
@@ -83,6 +89,7 @@ pub async fn sandbox_run(
             prompt,
             model,
             reasoning,
+            fast,
             extra_args: vec![],
             env: HashMap::new(),
             stream_output: true,

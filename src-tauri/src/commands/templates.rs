@@ -16,6 +16,7 @@ use crate::services::template_polish::{
 };
 use crate::services::template_vars::{
     assert_plan_structure_unchanged, instantiate_texts, parse_variables_json, resolve_values,
+    strip_runtime_routing_from_plan_json,
     unknown_placeholders,
 };
 use crate::state::{DbState, RunState};
@@ -196,8 +197,9 @@ pub fn create_template_cmd(
             unknown.join(", ")
         ));
     }
-    // Parse plan for basic shape
-    let _ = parse_plan_json(&args.plan_json)?;
+    // Parse + drop snapshotted CLI/model: agent assignment is locked; runtime
+    // routing rebinds from the agent profile each time the template runs.
+    let plan_json = strip_runtime_routing_from_plan_json(&args.plan_json)?;
 
     with_db(&state, |c| {
         repo_create(
@@ -209,7 +211,7 @@ pub fn create_template_cmd(
                 source_plan_id: args.source_plan_id,
                 source_run_id: args.source_run_id,
                 goal_prompt: args.goal_prompt,
-                plan_json: args.plan_json,
+                plan_json,
                 variables_json: vars_raw,
             },
         )
@@ -241,10 +243,9 @@ pub fn update_template_cmd(
             .ok_or_else(|| format!("template not found: {}", args.id))?;
 
         let plan_json = if let Some(ref new_plan) = args.plan_json {
-            Some(assert_plan_structure_unchanged(
-                &existing.plan_json,
-                new_plan,
-            )?)
+            let locked = assert_plan_structure_unchanged(&existing.plan_json, new_plan)?;
+            // Do not persist frozen CLI/model from an edited plan snapshot.
+            Some(strip_runtime_routing_from_plan_json(&locked)?)
         } else {
             None
         };

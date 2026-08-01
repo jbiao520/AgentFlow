@@ -4,6 +4,7 @@ use crate::repo::{
     list_schedules as repo_list, set_schedule_enabled, update_schedule as repo_update,
     Schedule, ScheduleCreate, ScheduleUpdate,
 };
+use crate::repo::tasks::{list_task_runs_for_schedule, TaskRun};
 use crate::services::scheduler::run_schedule_now;
 use crate::state::{DbState, RunState};
 use serde::{Deserialize, Serialize};
@@ -23,6 +24,18 @@ where
 #[tauri::command]
 pub fn list_schedules(state: State<'_, DbState>) -> Result<Vec<Schedule>, String> {
     with_db(&state, repo_list)
+}
+
+#[tauri::command(rename = "list_schedule_runs")]
+pub fn list_schedule_runs(
+    state: State<'_, DbState>,
+    schedule_id: String,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<TaskRun>, String> {
+    with_db(&state, |c| {
+        list_task_runs_for_schedule(c, &schedule_id, limit.unwrap_or(20), offset.unwrap_or(0))
+    })
 }
 
 #[tauri::command(rename = "get_schedule")]

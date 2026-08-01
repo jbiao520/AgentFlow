@@ -7,8 +7,12 @@ import {
 } from "../../lib/api/agents";
 import {
   bindModelCatalogPanel,
+  engineOptionsWithFast,
+  isFastChecked,
+  parseFastFromEngineOptions,
   selectedEffort,
 } from "../cli-models";
+import { setSelectValue } from "../form";
 import { showToast } from "../toast";
 import { findCachedAgent, getSelectedAgentId, setCachedAgents } from "./state";
 
@@ -20,13 +24,14 @@ let reloadCatalog:
   | ((preferred?: {
       model?: string;
       effort?: string;
+      fast?: boolean;
       keepUnavailable?: boolean;
     }) => Promise<void>)
   | null = null;
 
 export function applyProfileToForm(agent: Agent): void {
   const cli = el<HTMLSelectElement>("detail-cli-select");
-  if (cli) cli.value = agent.default_cli || "codex";
+  if (cli) setSelectValue(cli, agent.default_cli || "codex", true);
 
   const desc = el<HTMLInputElement>("detail-agent-description");
   if (desc) desc.value = agent.description || "";
@@ -69,6 +74,7 @@ export async function loadAgentDetailConfig(
     await reloadCatalog({
       model: profile?.preferred_model || "",
       effort: profile?.reasoning_effort || "",
+      fast: parseFastFromEngineOptions(profile?.engine_options_json),
       keepUnavailable: true,
     });
   }
@@ -99,6 +105,7 @@ export async function saveAgentDetailConfig(): Promise<void> {
     el<HTMLSelectElement>("detail-model-select")?.value.trim() || null;
   const pills = el<HTMLElement>("detail-reasoning-pills");
   const reasoning = pills ? selectedEffort(pills) : "";
+  const useFast = isFastChecked(el<HTMLInputElement>("detail-fast-toggle"));
   const description =
     el<HTMLInputElement>("detail-agent-description")?.value.trim() || null;
 
@@ -107,7 +114,7 @@ export async function saveAgentDetailConfig(): Promise<void> {
     return;
   }
 
-  const engine_options_json = "{}";
+  const engine_options_json = engineOptionsWithFast(useFast);
 
   try {
     await upsertAgentProfile({
@@ -135,6 +142,7 @@ export async function saveAgentDetailConfig(): Promise<void> {
       await reloadCatalog({
         model,
         effort: reasoning,
+        fast: useFast,
         keepUnavailable: true,
       });
     }
@@ -155,9 +163,12 @@ export function initDetailConfig(): void {
       cliSelect: cli,
       modelSelect: model,
       pills,
+      fastWrap: el<HTMLElement>("detail-fast-wrap"),
+      fastToggle: el<HTMLInputElement>("detail-fast-toggle"),
       getPreferred: () => ({
         model: model.value.trim(),
         effort: selectedEffort(pills),
+        fast: isFastChecked(el<HTMLInputElement>("detail-fast-toggle")),
       }),
     });
   }

@@ -157,6 +157,9 @@ impl StreamDecoder {
                 out
             }
             "result" => {
+                if let Some(usage) = parse_cursor_usage(v) {
+                    self.usage.merge(&usage);
+                }
                 let mut out = self.flush();
                 let subtype = v.get("subtype").and_then(|x| x.as_str()).unwrap_or("");
                 let ms = v.get("duration_ms").and_then(|x| x.as_u64());
@@ -346,6 +349,29 @@ impl StreamDecoder {
             }
         }
     }
+}
+
+/// Parse cursor-agent terminal `result` usage (camelCase; no cost field):
+/// `{"type":"result","usage":{"inputTokens":..,"outputTokens":..,
+///   "cacheReadTokens":..,"cacheWriteTokens":..}}`
+/// `inputTokens` is uncached only — cache fields are separate (like OpenCode).
+fn parse_cursor_usage(v: &Value) -> Option<TokenUsage> {
+    let u = v.get("usage")?;
+    let input = u.get("inputTokens").and_then(|x| x.as_u64()).unwrap_or(0);
+    let output = u.get("outputTokens").and_then(|x| x.as_u64()).unwrap_or(0);
+    let cache_read = u.get("cacheReadTokens").and_then(|x| x.as_u64()).unwrap_or(0);
+    let cache_write = u.get("cacheWriteTokens").and_then(|x| x.as_u64()).unwrap_or(0);
+    if input == 0 && output == 0 && cache_read == 0 && cache_write == 0 {
+        return None;
+    }
+    Some(TokenUsage {
+        input_tokens: input,
+        cached_input_tokens: cache_read,
+        cache_write_input_tokens: cache_write,
+        output_tokens: output,
+        reasoning_tokens: 0,
+        cost: None,
+    })
 }
 
 /// Parse codex `turn.completed` usage:
@@ -614,6 +640,28 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].stream, "agent");
         assert_eq!(out[0].line, "OK");
+    }
+
+    #[test]
+    fn cursor_result_captures_usage() {
+        let mut d = StreamDecoder::new("cursor-agent");
+        let out = d.push(LogEvent {
+            ts: "t".into(),
+            stream: "stdout".into(),
+            line: r#"{"type":"result","subtype":"success","duration_ms":1234,"result":"ok","usage":{"inputTokens":7,"outputTokens":548,"cacheReadTokens":147695,"cacheWriteTokens":39331}}"#.into(),
+        });
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].stream, "status");
+        assert!(out[0].line.contains("done in 1234ms"));
+        let u = d.usage();
+        assert_eq!(u.input_tokens, 7);
+        assert_eq!(u.cached_input_tokens, 147695);
+        assert_eq!(u.cache_write_input_tokens, 39331);
+        assert_eq!(u.output_tokens, 548);
+        assert_eq!(u.reasoning_tokens, 0);
+        assert_eq!(u.cost, None);
+        // Cursor reports cache separately from input (same as OpenCode).
+        assert_eq!(u.total_tokens_for_engine("cursor-agent"), 7 + 548 + 147695 + 39331);
     }
 
     #[test]

@@ -9,10 +9,30 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 
 /// Effort suffixes matched longest-first when splitting Cursor model ids.
-const CURSOR_EFFORT_SUFFIXES: &[&str] = &["xhigh", "medium", "high", "low", "max"];
+/// `extra-high` is Cursor's spelling of xhigh on some families (e.g. gpt-5.5).
+/// `minimal` appears on Gemini flash variants.
+const CURSOR_EFFORT_SUFFIXES: &[&str] = &[
+    "extra-high",
+    "xhigh",
+    "medium",
+    "high",
+    "low",
+    "max",
+    "none",
+    "minimal",
+];
 
 /// Preferred display order for Cursor efforts when merging.
-const CURSOR_EFFORT_ORDER: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+const CURSOR_EFFORT_ORDER: &[&str] = &[
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "extra-high",
+    "max",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EngineModel {
@@ -20,6 +40,9 @@ pub struct EngineModel {
     pub display_name: String,
     pub efforts: Vec<String>,
     pub default_effort: Option<String>,
+    /// Cursor only: base model has at least one `-fast` variant in the live catalog.
+    #[serde(default)]
+    pub supports_fast: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -189,6 +212,7 @@ fn parse_codex_models(stdout: &str) -> Result<Vec<EngineModel>, String> {
                     .unwrap_or_else(|| String::new()),
                 efforts,
                 default_effort,
+                supports_fast: false,
             }
         })
         .map(|mut m| {
@@ -270,6 +294,7 @@ fn parse_opencode_models(stdout: &str) -> Result<Vec<EngineModel>, String> {
             display_name,
             efforts,
             default_effort,
+            supports_fast: false,
         });
     }
 
@@ -352,17 +377,112 @@ pub fn split_cursor_model_id(raw: &str) -> (String, Option<String>, bool) {
     (s.to_string(), None, fast)
 }
 
-/// Compose Cursor `--model` id from base + effort (suffix form).
-pub fn compose_cursor_model_id(base: &str, effort: Option<&str>) -> String {
+/// Compose Cursor `--model` id from base + effort + optional `-fast`.
+///
+/// Cursor catalogs often have no bare base id (only `-none`/`-low`/… variants),
+/// so an explicit `none` effort becomes the `-none` suffix.
+pub fn compose_cursor_model_id(base: &str, effort: Option<&str>, fast: bool) -> String {
     let base = base.trim();
-    let (stem, existing, _) = split_cursor_model_id(base);
-    if existing.is_some() {
-        // Already has an effort suffix — leave as-is.
-        return base.to_string();
+    let (stem, existing, had_fast) = split_cursor_model_id(base);
+    let use_fast = fast || had_fast;
+    let with_effort = if existing.is_some() {
+        // Already has an effort suffix — keep stem as-is (ignore effort override).
+        base.trim()
+            .strip_suffix("-fast")
+            .filter(|s| !s.is_empty())
+            .unwrap_or(base.trim())
+            .to_string()
+    } else {
+        match effort.map(str::trim).filter(|e| !e.is_empty()) {
+            Some(e) => format!("{stem}-{e}"),
+            None => stem,
+        }
+    };
+    if use_fast {
+        format!("{with_effort}-fast")
+    } else {
+        with_effort
     }
-    match effort.map(str::trim).filter(|e| !e.is_empty()) {
-        Some(e) => format!("{stem}-{e}"),
-        None => stem,
+}
+
+/// Parse `{"fast": true}` from agent `engine_options_json`.
+pub fn engine_options_fast(json: Option<&str>) -> bool {
+    let raw = json.map(str::trim).unwrap_or("");
+    if raw.is_empty() {
+        return false;
+    }
+    serde_json::from_str::<serde_json::Value>(raw)
+        .ok()
+        .and_then(|v| v.get("fast").and_then(|f| f.as_bool()))
+        .unwrap_or(false)
+}
+
+/// Build minimal engine_options_json for the Fast toggle.
+pub fn engine_options_with_fast(fast: bool) -> String {
+    if fast {
+        r#"{"fast":true}"#.to_string()
+    } else {
+        "{}".to_string()
+    }
+}
+
+/// Resolve the effort that should actually be sent to a CLI.
+///
+/// Models that advertise **no** efforts (e.g. Cursor `composer-2.5`, `auto`)
+/// must never receive a suffix / variant / `-c model_reasoning_effort` — a
+/// leftover profile default like `medium` would break the run.
+///
+/// `none` is only kept when the live catalog lists it (Cursor `-none` variants).
+/// Other engines treat `none` as "omit the effort flag".
+///
+/// When the live catalog cannot be loaded, the requested effort is passed
+/// through unchanged (caller may still have validated earlier) — except bare
+/// `none`, which still means omit.
+pub fn effective_reasoning_effort(
+    engine: &str,
+    model: Option<&str>,
+    requested: Option<&str>,
+) -> Option<String> {
+    let effort = requested?.trim();
+    if effort.is_empty() {
+        return None;
+    }
+    let is_none = effort.eq_ignore_ascii_case("none");
+    let model = match model.map(str::trim).filter(|m| !m.is_empty()) {
+        Some(m) => m,
+        None => {
+            return if is_none {
+                None
+            } else {
+                Some(effort.to_string())
+            };
+        }
+    };
+    match list_engine_models(engine, false) {
+        Ok(catalog) => {
+            if let Some(m) = catalog.models.iter().find(|m| m.id == model) {
+                if m.efforts.is_empty() {
+                    return None;
+                }
+                if is_none {
+                    return if m.efforts.iter().any(|e| e.eq_ignore_ascii_case("none")) {
+                        Some("none".into())
+                    } else {
+                        None
+                    };
+                }
+            } else if is_none {
+                return None;
+            }
+            Some(effort.to_string())
+        }
+        Err(_) => {
+            if is_none {
+                None
+            } else {
+                Some(effort.to_string())
+            }
+        }
     }
 }
 
@@ -424,12 +544,14 @@ fn parse_cursor_models(stdout: &str) -> Result<Vec<EngineModel>, String> {
         } else {
             efforts.first().cloned()
         };
+        let supports_fast = group.iter().any(|r| r.fast);
 
         models.push(EngineModel {
             id: base,
             display_name,
             efforts,
             default_effort,
+            supports_fast,
         });
     }
 
@@ -437,24 +559,88 @@ fn parse_cursor_models(stdout: &str) -> Result<Vec<EngineModel>, String> {
 }
 
 fn pick_cursor_display_name(group: &[CursorRow], base: &str) -> String {
-    // Prefer non-fast + high.
-    if let Some(row) = group
-        .iter()
-        .find(|r| !r.fast && r.effort.as_deref() == Some("high"))
-    {
-        return row.display.clone();
+    // Prefer names that are already effort-neutral (bare / medium), then high.
+    let preference = [
+        None,
+        Some("medium"),
+        Some("high"),
+        Some("xhigh"),
+        Some("extra-high"),
+        Some("max"),
+        Some("low"),
+        Some("minimal"),
+        Some("none"),
+    ];
+    let mut raw = None;
+    for want in preference {
+        if let Some(row) = group
+            .iter()
+            .find(|r| !r.fast && r.effort.as_deref() == want)
+        {
+            raw = Some(row.display.clone());
+            break;
+        }
     }
-    // Prefer any non-fast with an effort, else any non-fast, else first.
-    if let Some(row) = group.iter().find(|r| !r.fast && r.effort.is_some()) {
-        return row.display.clone();
+    if raw.is_none() {
+        if let Some(row) = group.iter().find(|r| !r.fast) {
+            raw = Some(row.display.clone());
+        } else {
+            raw = group.first().map(|r| r.display.clone());
+        }
     }
-    if let Some(row) = group.iter().find(|r| !r.fast) {
-        return row.display.clone();
+    let raw = raw.unwrap_or_else(|| base.to_string());
+    strip_effort_from_display(&raw)
+}
+
+/// Remove effort / Fast adjectives from Cursor catalog display names so the
+/// model dropdown stays effort-neutral (effort is chosen via pills).
+fn strip_effort_from_display(display: &str) -> String {
+    let mut s = display.trim().to_string();
+    if let Some(rest) = s.strip_suffix(" Fast") {
+        if !rest.is_empty() {
+            s = rest.trim_end().to_string();
+        }
     }
-    group
-        .first()
-        .map(|r| r.display.clone())
-        .unwrap_or_else(|| base.to_string())
+
+    // Longest phrases first so "Extra High" wins over "High".
+    const PHRASES: &[&str] = &[
+        " Extra High",
+        " Extra-High",
+        " Medium",
+        " High",
+        " Low",
+        " Max",
+        " None",
+        " Minimal",
+        " Xhigh",
+        " XHigh",
+    ];
+
+    for phrase in PHRASES {
+        if let Some(rest) = s.strip_suffix(phrase) {
+            if !rest.is_empty() {
+                s = rest.trim_end().to_string();
+                break;
+            }
+        }
+        // e.g. "Opus 5 1M Low Thinking" / "Fable 5 1M Extra High Thinking (NO ZDR)"
+        let before_thinking = format!("{phrase} Thinking");
+        if let Some(idx) = s.find(&before_thinking) {
+            s = format!("{} Thinking{}", &s[..idx], &s[idx + before_thinking.len()..]);
+            break;
+        }
+        // e.g. "Fable 5 1M High (NO ZDR)"
+        let before_paren = format!("{phrase} (");
+        if let Some(idx) = s.find(&before_paren) {
+            s = format!("{} ({}", &s[..idx], &s[idx + before_paren.len()..]);
+            break;
+        }
+    }
+
+    while s.contains("  ") {
+        s = s.replace("  ", " ");
+    }
+    s.trim().to_string()
 }
 
 #[cfg(test)]
@@ -470,6 +656,14 @@ mod tests {
         assert_eq!(
             split_cursor_model_id("gpt-5.6-sol-xhigh"),
             ("gpt-5.6-sol".into(), Some("xhigh".into()), false)
+        );
+        assert_eq!(
+            split_cursor_model_id("gpt-5.6-sol-none"),
+            ("gpt-5.6-sol".into(), Some("none".into()), false)
+        );
+        assert_eq!(
+            split_cursor_model_id("gpt-5.5-extra-high"),
+            ("gpt-5.5".into(), Some("extra-high".into()), false)
         );
         assert_eq!(
             split_cursor_model_id("composer-2.5"),
@@ -488,14 +682,117 @@ mod tests {
     #[test]
     fn compose_cursor_model_id_suffix() {
         assert_eq!(
-            compose_cursor_model_id("gpt-5.6-sol", Some("high")),
+            compose_cursor_model_id("gpt-5.6-sol", Some("high"), false),
             "gpt-5.6-sol-high"
         );
-        assert_eq!(compose_cursor_model_id("auto", None), "auto");
         assert_eq!(
-            compose_cursor_model_id("gpt-5.6-sol-high", Some("low")),
+            compose_cursor_model_id("gpt-5.6-sol", Some("high"), true),
+            "gpt-5.6-sol-high-fast"
+        );
+        assert_eq!(compose_cursor_model_id("auto", None, false), "auto");
+        assert_eq!(compose_cursor_model_id("auto", None, true), "auto-fast");
+        assert_eq!(
+            compose_cursor_model_id("gpt-5.6-sol-high", Some("low"), false),
             "gpt-5.6-sol-high"
         );
+        assert_eq!(
+            compose_cursor_model_id("composer-2.5-fast", None, false),
+            "composer-2.5-fast"
+        );
+        assert_eq!(
+            compose_cursor_model_id("composer-2.5", None, true),
+            "composer-2.5-fast"
+        );
+        // Empty effort → bare base. Explicit `none` → `-none` (Cursor catalog).
+        assert_eq!(
+            compose_cursor_model_id("composer-2.5", Some(""), false),
+            "composer-2.5"
+        );
+        assert_eq!(
+            compose_cursor_model_id("gpt-5.6-sol", Some("none"), false),
+            "gpt-5.6-sol-none"
+        );
+        assert_eq!(
+            compose_cursor_model_id("gpt-5.5", Some("extra-high"), false),
+            "gpt-5.5-extra-high"
+        );
+    }
+
+    #[test]
+    fn effective_reasoning_drops_when_model_has_no_efforts() {
+        let catalog = EngineModelCatalog {
+            engine: "cursor-agent".into(),
+            models: vec![
+                EngineModel {
+                    id: "composer-2.5".into(),
+                    display_name: "Composer 2.5".into(),
+                    efforts: vec![],
+                    default_effort: None,
+                    supports_fast: true,
+                },
+                EngineModel {
+                    id: "gpt-5.6-sol".into(),
+                    display_name: "Sol".into(),
+                    efforts: vec![
+                        "none".into(),
+                        "medium".into(),
+                        "high".into(),
+                    ],
+                    default_effort: Some("high".into()),
+                    supports_fast: true,
+                },
+            ],
+            fetched_at: 0,
+        };
+        {
+            let mut guard = CACHE.lock().unwrap();
+            let map = guard.get_or_insert_with(HashMap::new);
+            map.insert(
+                "cursor-agent".into(),
+                CacheEntry {
+                    catalog: catalog.clone(),
+                    fetched: Instant::now(),
+                },
+            );
+        }
+
+        assert_eq!(
+            effective_reasoning_effort(
+                "cursor-agent",
+                Some("composer-2.5"),
+                Some("medium")
+            ),
+            None,
+            "composer must not keep a leftover medium"
+        );
+        assert_eq!(
+            effective_reasoning_effort("cursor-agent", Some("gpt-5.6-sol"), Some("high")),
+            Some("high".into())
+        );
+        assert_eq!(
+            effective_reasoning_effort("cursor-agent", Some("gpt-5.6-sol"), Some("none")),
+            Some("none".into()),
+            "Cursor -none is a real catalog effort"
+        );
+        assert_eq!(
+            effective_reasoning_effort("cursor-agent", Some("composer-2.5"), Some("none")),
+            None,
+            "composer has no efforts — drop none"
+        );
+        assert_eq!(
+            effective_reasoning_effort("cursor-agent", Some("composer-2.5"), None),
+            None
+        );
+    }
+
+    #[test]
+    fn engine_options_fast_roundtrip() {
+        assert!(!engine_options_fast(None));
+        assert!(!engine_options_fast(Some("{}")));
+        assert!(!engine_options_fast(Some(r#"{"fast":false}"#)));
+        assert!(engine_options_fast(Some(r#"{"fast":true}"#)));
+        assert_eq!(engine_options_with_fast(true), r#"{"fast":true}"#);
+        assert_eq!(engine_options_with_fast(false), "{}");
     }
 
     #[test]
@@ -507,21 +804,69 @@ auto - Auto (default)
 gpt-5.6-sol-high - GPT-5.6 Sol 1M High
 gpt-5.6-sol-high-fast - GPT-5.6 Sol High Fast
 gpt-5.6-sol-xhigh - GPT-5.6 Sol 1M Extra High
+gpt-5.6-sol-medium - GPT-5.6 Sol 1M
+gpt-5.6-sol-none - GPT-5.6 Sol 1M None
+gpt-5.5-high - GPT-5.5 1M High
+gpt-5.5-extra-high - GPT-5.5 1M Extra High
+gpt-5.5-medium - GPT-5.5 1M
 composer-2.5 - Composer 2.5
 composer-2.5-fast - Composer 2.5 Fast
+kimi-k3-high - Kimi K3 High
+kimi-k3-low - Kimi K3 Low
+kimi-k3-max - Kimi K3
 "#;
         let models = parse_cursor_models(stdout).expect("parse");
         let sol = models.iter().find(|m| m.id == "gpt-5.6-sol").unwrap();
-        assert_eq!(sol.efforts, vec!["high", "xhigh"]);
+        assert_eq!(sol.efforts, vec!["none", "medium", "high", "xhigh"]);
         assert_eq!(sol.default_effort.as_deref(), Some("high"));
-        assert_eq!(sol.display_name, "GPT-5.6 Sol 1M High");
+        assert_eq!(sol.display_name, "GPT-5.6 Sol 1M");
+        assert!(sol.supports_fast);
+
+        let gpt55 = models.iter().find(|m| m.id == "gpt-5.5").unwrap();
+        assert_eq!(gpt55.efforts, vec!["medium", "high", "extra-high"]);
+        assert_eq!(gpt55.display_name, "GPT-5.5 1M");
+        assert!(
+            models.iter().all(|m| m.id != "gpt-5.5-extra"),
+            "extra-high must not split into a separate base"
+        );
+
+        let kimi = models.iter().find(|m| m.id == "kimi-k3").unwrap();
+        assert_eq!(kimi.efforts, vec!["low", "high", "max"]);
+        assert_eq!(kimi.display_name, "Kimi K3");
 
         let composer = models.iter().find(|m| m.id == "composer-2.5").unwrap();
         assert!(composer.efforts.is_empty());
         assert_eq!(composer.display_name, "Composer 2.5");
+        assert!(composer.supports_fast);
 
         let auto = models.iter().find(|m| m.id == "auto").unwrap();
         assert!(auto.efforts.is_empty());
+        assert!(!auto.supports_fast);
+    }
+
+    #[test]
+    fn strip_effort_words_from_display() {
+        assert_eq!(
+            strip_effort_from_display("GPT-5.6 Sol 1M High"),
+            "GPT-5.6 Sol 1M"
+        );
+        assert_eq!(
+            strip_effort_from_display("GPT-5.6 Sol 1M Extra High"),
+            "GPT-5.6 Sol 1M"
+        );
+        assert_eq!(
+            strip_effort_from_display("Opus 5 1M Low Thinking"),
+            "Opus 5 1M Thinking"
+        );
+        assert_eq!(
+            strip_effort_from_display("Fable 5 1M Extra High Thinking (NO ZDR)"),
+            "Fable 5 1M Thinking (NO ZDR)"
+        );
+        assert_eq!(strip_effort_from_display("Kimi K3 High"), "Kimi K3");
+        assert_eq!(
+            strip_effort_from_display("Cursor Grok 4.5"),
+            "Cursor Grok 4.5"
+        );
     }
 
     #[test]

@@ -1,6 +1,7 @@
--- AgentFlow schema v7 (SPEC §6 + templates + schedules)
+-- AgentFlow schema v8 (SPEC §6 + templates + schedules)
 -- v6: schedule expressions, execution windows, overlap policy and retries.
 -- v7: task_runs.is_manual distinguishes ticker fires from manual run-now.
+-- v8: orchestrator_settings.use_fast for Cursor -fast model variants.
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS orchestrator_settings (
   cli_engine TEXT NOT NULL,
   model TEXT NOT NULL,
   reasoning_effort TEXT NOT NULL,
+  use_fast INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL
 );
 
@@ -155,7 +157,8 @@ CREATE INDEX IF NOT EXISTS idx_schedules_due
 -- idx_task_runs_schedule_active is created in migrate_v6 after schedule_id
 -- is ensured (CREATE TABLE IF NOT EXISTS does not add columns on upgrades).
 
--- Per-execution token usage captured from CLI JSONL streams (codex/opencode).
+-- Per-execution token usage captured from CLI JSONL streams
+-- (codex / opencode / cursor-agent).
 CREATE TABLE IF NOT EXISTS node_usage (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   run_id TEXT NOT NULL REFERENCES task_runs(id) ON DELETE CASCADE,
