@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AgentFlow</title>
+    <script>
+      (function () {
+        try {
+          var pref = localStorage.getItem("agentflow.theme") || "system";
+          if (pref !== "light" && pref !== "dark" && pref !== "system") pref = "system";
+          var dark =
+            pref === "dark" ||
+            (pref === "system" &&
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme-pref", pref);
+        } catch (e) {}
+      })();
+    </script>
     <link rel="stylesheet" href="/src/styles.css" />
     <script type="module" src="/src/main.ts" defer></script>
   </head>

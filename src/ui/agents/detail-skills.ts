@@ -17,9 +17,14 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function skillFileName(relativePath: string): string {
-  const parts = relativePath.split("/");
-  return parts[parts.length - 1] || relativePath;
+function skillDisplayName(skill: Skill): string {
+  if (skill.title?.trim()) return skill.title.trim();
+  const parts = skill.relative_path.split("/");
+  // Prefer parent folder for `.../foo/skill.md`
+  if (parts.length >= 2 && /^skill\.md$/i.test(parts[parts.length - 1] || "")) {
+    return parts[parts.length - 2] || skill.relative_path;
+  }
+  return parts[parts.length - 1] || skill.relative_path;
 }
 
 function renderSkillRow(skill: Skill): string {
@@ -29,7 +34,7 @@ function renderSkillRow(skill: Skill): string {
     <div class="skill-item-row" data-skill-id="${escapeHtml(skill.id)}" data-skill-path="${escapeHtml(skill.relative_path)}">
       <div class="skill-info">
         <div class="skill-title">
-          <span>${escapeHtml(skillFileName(skill.relative_path))}</span>
+          <span>${escapeHtml(skillDisplayName(skill))}</span>
           <span style="font-size:10px; color:var(--accent-primary); background:var(--accent-tint); padding:1px 5px; border-radius:3px;">点击预览</span>
         </div>
         <div class="skill-desc">${escapeHtml(desc)}</div>
@@ -47,9 +52,9 @@ function skillListContainer(): HTMLElement | null {
 }
 
 async function previewSkill(agentId: string, skill: Skill): Promise<void> {
-  const filename = skillFileName(skill.relative_path);
+  const name = skillDisplayName(skill);
   const desc = skill.description || "";
-  openSkillDetailModal(filename, desc);
+  openSkillDetailModal(name, desc);
   const body = document.getElementById("skill-modal-body");
   if (body) {
     body.innerHTML = `<div style="padding:12px 0; display:flex; flex-direction:column; gap:8px;">
@@ -94,8 +99,8 @@ function bindSkillRows(agentId: string, skills: Skill[]): void {
         await setSkillEnabled(skill.id, toggle.checked);
         showToast(
           toggle.checked
-            ? `已启用 ${skillFileName(skill.relative_path)}`
-            : `已禁用 ${skillFileName(skill.relative_path)}`,
+            ? `已启用 ${skillDisplayName(skill)}`
+            : `已禁用 ${skillDisplayName(skill)}`,
         );
       } catch (err) {
         toggle.checked = !toggle.checked;
@@ -123,7 +128,7 @@ export async function refreshAgentSkills(agentId?: string | null): Promise<void>
       list.innerHTML = `
         <div style="font-size:12px; color:var(--fg-muted); padding:12px 0; text-align:center;">
           <div style="font-weight:600; color:var(--fg-primary); margin-bottom:6px;">暂无 Skill</div>
-          <div style="margin-bottom:10px;">在 Workspace 的 <code>.agent/skills/</code> 放置 Markdown，然后同步。</div>
+          <div style="margin-bottom:10px;">在 Workspace 的 <code>.agent/skills/&lt;name&gt;/skill.md</code> 放置技能，然后同步。</div>
           <button type="button" class="btn btn-secondary btn-sm" id="skills-empty-sync-cta">同步 Workspace Skill</button>
         </div>`;
       list

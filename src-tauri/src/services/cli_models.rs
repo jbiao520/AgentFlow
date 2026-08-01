@@ -2,11 +2,16 @@
 use crate::services::cli_probe::resolve_engine_binary;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::process::Command;
+use std::io::Read;
+use std::path::Path;
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+/// Bound CLI model-list calls so a hung `codex`/`cursor-agent`/`opencode` cannot
+/// stall forever (and must never be invoked while holding the global DB mutex).
+const CATALOG_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Effort suffixes matched longest-first when splitting Cursor model ids.
 /// `extra-high` is Cursor's spelling of xhigh on some families (e.g. gpt-5.5).
@@ -118,15 +123,9 @@ fn fetch_catalog(engine: &str) -> Result<EngineModelCatalog, String> {
         _ => return Err(format!("unsupported engine: {engine}")),
     };
 
-    let output = Command::new(&bin)
-        .args(&args)
-        .output()
-        .map_err(|e| format!("failed to run {engine}: {e}"))?;
+    let (stdout, stderr, status) = run_catalog_command(&bin, &args, engine)?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    if !output.status.success() {
+    if !status.success() {
         let snippet = stderr.trim();
         let snippet = if snippet.is_empty() {
             stdout.trim()
@@ -136,7 +135,7 @@ fn fetch_catalog(engine: &str) -> Result<EngineModelCatalog, String> {
         let snippet: String = snippet.chars().take(400).collect();
         return Err(format!(
             "{engine} models failed (exit {:?}): {snippet}",
-            output.status.code()
+            status.code()
         ));
     }
 
@@ -154,6 +153,56 @@ fn fetch_catalog(engine: &str) -> Result<EngineModelCatalog, String> {
         models,
         fetched_at: now_ms(),
     })
+}
+
+fn run_catalog_command(
+    bin: &Path,
+    args: &[&str],
+    engine: &str,
+) -> Result<(String, String, std::process::ExitStatus), String> {
+    let mut child = Command::new(bin)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("failed to run {engine}: {e}"))?;
+
+    let mut stdout_pipe = child.stdout.take().ok_or("missing stdout")?;
+    let mut stderr_pipe = child.stderr.take().ok_or("missing stderr")?;
+    let reader = std::thread::spawn(move || {
+        let mut out = String::new();
+        let mut err = String::new();
+        let _ = stdout_pipe.read_to_string(&mut out);
+        let _ = stderr_pipe.read_to_string(&mut err);
+        (out, err)
+    });
+
+    let deadline = Instant::now() + CATALOG_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let (out, err) = reader.join().unwrap_or_default();
+                return Ok((out, err, status));
+            }
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = reader.join();
+                    return Err(format!(
+                        "{engine} models timed out after {}s",
+                        CATALOG_TIMEOUT.as_secs()
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(40));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                let _ = reader.join();
+                return Err(format!("try_wait {engine} models: {e}"));
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -640,7 +689,9 @@ fn strip_effort_from_display(display: &str) -> String {
     while s.contains("  ") {
         s = s.replace("  ", " ");
     }
-    s.trim().to_string()
+    // Drop a trailing separator left by phrases like "Name - High".
+    s = s.trim().trim_end_matches(['-', '—', '–']).trim().to_string();
+    s
 }
 
 #[cfg(test)]
@@ -866,6 +917,14 @@ kimi-k3-max - Kimi K3
         assert_eq!(
             strip_effort_from_display("Cursor Grok 4.5"),
             "Cursor Grok 4.5"
+        );
+        assert_eq!(
+            strip_effort_from_display("GPT-5.6 Sol 1M -"),
+            "GPT-5.6 Sol 1M"
+        );
+        assert_eq!(
+            strip_effort_from_display("Codex 5.3 - High"),
+            "Codex 5.3"
         );
     }
 

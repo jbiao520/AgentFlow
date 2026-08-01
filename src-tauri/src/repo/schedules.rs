@@ -1,5 +1,5 @@
 use crate::db::{format_unix_as_iso8601, now_iso8601, now_unix, parse_iso8601_unix};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -784,10 +784,15 @@ fn validate_cron_expr(expr: &str) -> Result<(), String> {
 }
 
 /// Find the next fire time after `after_unix` for a Cron expression (Unix 5-field or Quartz).
+///
+/// Hour/minute/day fields are evaluated in the **system local timezone**, matching the
+/// Schedules UI (e.g. `0 9 * * 1-5` = weekdays 09:00 local). The returned ISO-8601
+/// timestamp is still stored in UTC (`…Z`).
 pub fn next_cron_run_at(expr: &str, after_unix: u64) -> Result<String, String> {
     let schedule = parse_cron_schedule(expr)?;
-    let after = DateTime::<Utc>::from_timestamp(after_unix as i64, 0)
+    let after_utc = DateTime::<Utc>::from_timestamp(after_unix as i64, 0)
         .ok_or_else(|| "invalid timestamp for cron schedule".to_string())?;
+    let after = after_utc.with_timezone(&Local);
     let next = schedule
         .after(&after)
         .next()
@@ -797,6 +802,43 @@ pub fn next_cron_run_at(expr: &str, after_unix: u64) -> Result<String, String> {
         return Err("cron next run is before the unix epoch".into());
     }
     Ok(format_unix_as_iso8601(ts as u64))
+}
+
+/// Recompute `next_run_at` for every cron schedule from its expression in local time.
+/// Call on scheduler start so existing rows (previously UTC-evaluated) realign immediately.
+pub fn realign_cron_next_runs(conn: &Connection) -> Result<usize, String> {
+    let schedules = list_schedules(conn)?;
+    let now_u = now_unix();
+    let now = format_unix_as_iso8601(now_u);
+    let mut updated = 0usize;
+    for schedule in schedules {
+        if schedule.mode != ScheduleMode::Cron.as_str() {
+            continue;
+        }
+        let Some(expr) = schedule.cron_expr.as_deref() else {
+            continue;
+        };
+        let next = match next_cron_run_at(expr, now_u) {
+            Ok(n) => n,
+            Err(e) => {
+                eprintln!(
+                    "[AgentFlow] skip realign cron schedule {}: {e}",
+                    schedule.id
+                );
+                continue;
+            }
+        };
+        if next == schedule.next_run_at {
+            continue;
+        }
+        conn.execute(
+            "UPDATE schedules SET next_run_at=?1, updated_at=?2 WHERE id=?3",
+            params![next, now, schedule.id],
+        )
+        .map_err(|e| format!("realign cron next_run_at: {e}"))?;
+        updated += 1;
+    }
+    Ok(updated)
 }
 
 /// Check whether a schedule already owns a queued/running task run.
@@ -970,31 +1012,108 @@ mod tests {
         assert_eq!(list_schedules(&conn).unwrap().len(), 1);
     }
 
+    fn cron_next_as_local(expr: &str, after_unix: u64) -> chrono::DateTime<Local> {
+        let iso = next_cron_run_at(expr, after_unix).unwrap();
+        let ts = parse_iso8601_unix(&iso).unwrap() as i64;
+        DateTime::<Utc>::from_timestamp(ts, 0)
+            .unwrap()
+            .with_timezone(&Local)
+    }
+
     #[test]
     fn cron_expression_advances_to_the_next_matching_minute() {
-        assert_eq!(
-            next_cron_run_at("*/5 * * * *", 0).unwrap(),
-            "1970-01-01T00:05:00Z"
-        );
+        use chrono::Timelike;
+
+        let next = cron_next_as_local("*/5 * * * *", 0);
+        assert_eq!(next.minute() % 5, 0);
+        assert_eq!(next.second(), 0);
+        assert!(next.timestamp() > 0);
         assert!(next_cron_run_at("bad cron", 0).is_err());
     }
 
     #[test]
     fn unix_weekday_range_maps_to_quartz_monday_through_friday() {
-        // 1970-01-01 was Thursday (a weekday), so next 09:00 Mon–Fri is that morning.
-        assert_eq!(
-            next_cron_run_at("0 9 * * 1-5", 0).unwrap(),
-            "1970-01-01T09:00:00Z"
-        );
+        use chrono::{Datelike, Timelike, Weekday};
+
+        // Fields are local wall time: 09:00 on a weekday in the system timezone.
+        let next = cron_next_as_local("0 9 * * 1-5", 0);
+        assert_eq!(next.hour(), 9);
+        assert_eq!(next.minute(), 0);
+        assert!(matches!(
+            next.weekday(),
+            Weekday::Mon | Weekday::Tue | Weekday::Wed | Weekday::Thu | Weekday::Fri
+        ));
+
         // Unix `1` = Monday. Without Quartz remapping, `1` would mean Sunday.
-        assert_eq!(
-            next_cron_run_at("0 9 * * 1", 0).unwrap(),
-            "1970-01-05T09:00:00Z"
-        );
-        assert_eq!(
-            next_cron_run_at("0 9 * * Mon", 0).unwrap(),
-            "1970-01-05T09:00:00Z"
-        );
+        let next_mon = cron_next_as_local("0 9 * * 1", 0);
+        assert_eq!(next_mon.weekday(), Weekday::Mon);
+        assert_eq!(next_mon.hour(), 9);
+
+        let next_mon_named = cron_next_as_local("0 9 * * Mon", 0);
+        assert_eq!(next_mon_named.weekday(), Weekday::Mon);
+        assert_eq!(next_mon_named.hour(), 9);
+    }
+
+    #[test]
+    fn cron_nine_am_is_local_wall_clock_not_utc() {
+        use chrono::{Datelike, TimeZone, Timelike, Weekday};
+
+        // Monday 08:00 local → next weekday 09:00 must be the same local day.
+        let after = Local
+            .with_ymd_and_hms(2026, 8, 3, 8, 0, 0)
+            .single()
+            .expect("valid local datetime");
+        let next = cron_next_as_local("0 9 * * 1-5", after.timestamp() as u64);
+        assert_eq!(next.date_naive(), after.date_naive());
+        assert_eq!(next.weekday(), Weekday::Mon);
+        assert_eq!(next.hour(), 9);
+        assert_eq!(next.minute(), 0);
+
+        // Proves we are not evaluating in UTC: the stored UTC hour equals local 09:00
+        // converted to UTC (differs from 09 unless offset is zero).
+        let utc_hour = next.with_timezone(&Utc).hour();
+        let offset_secs = next.offset().local_minus_utc();
+        let expected_utc_hour = ((9 * 3600 - offset_secs) / 3600).rem_euclid(24) as u32;
+        assert_eq!(utc_hour, expected_utc_hour);
+    }
+
+    #[test]
+    fn realign_cron_next_runs_updates_stale_utc_based_rows() {
+        let (_tmp, conn) = setup();
+        let tmpl = crate::repo::templates::list_templates(&conn).unwrap();
+        let expr = "0 9 * * 1-5";
+        let expected = next_cron_run_at(expr, now_unix()).unwrap();
+        // Insert with a deliberately wrong next_run_at (pretend old UTC semantics).
+        let s = create_schedule(
+            &conn,
+            ScheduleCreate {
+                name: "stale cron".into(),
+                template_id: tmpl[0].id.clone(),
+                values_json: "{}".into(),
+                mode: "cron".into(),
+                interval_secs: None,
+                next_run_at: "2099-01-01T00:00:00Z".into(),
+                enabled: true,
+                cron_expr: Some(expr.into()),
+                window_start: None,
+                window_end: None,
+                overlap_policy: "queue".into(),
+                max_retries: 0,
+                retry_delay_secs: 300,
+            },
+        )
+        .unwrap();
+        // create_schedule already aligns cron; force a stale value to simulate pre-fix rows.
+        conn.execute(
+            "UPDATE schedules SET next_run_at=?1 WHERE id=?2",
+            params!["2099-06-01T09:00:00Z", s.id],
+        )
+        .unwrap();
+
+        let n = realign_cron_next_runs(&conn).unwrap();
+        assert!(n >= 1);
+        let after = get_schedule(&conn, &s.id).unwrap().unwrap();
+        assert_eq!(after.next_run_at, expected);
     }
 
     #[test]

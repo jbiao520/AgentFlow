@@ -282,13 +282,7 @@ pub fn confirm_plan_answers(
         validated.plan
     };
 
-    let dispatch = {
-        let conn = state
-            .conn
-            .lock()
-            .map_err(|e| format!("db lock poisoned: {e}"))?;
-        svc_dispatch(&conn, &plan_id)?
-    };
+    let dispatch = svc_dispatch(&state.conn, &plan_id)?;
 
     let started = crate::commands::tasks::start_run(
         app,

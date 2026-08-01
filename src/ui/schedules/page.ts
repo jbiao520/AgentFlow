@@ -492,7 +492,7 @@ function renderEditor(schedule: Schedule | null): void {
         <div class="form-group" id="sched-cron-group" style="${mode === "cron" ? "" : "display:none;"}">
           <label class="form-label">Cron 表达式</label>
           <input class="form-input" id="sched-cron" value="${escapeHtml(cronExpr)}" placeholder="0 9 * * 1-5" />
-          <div class="sched-field-hint">5 段：分 时 日 月 周（例如工作日 09:00）。下次执行时间由表达式自动计算。</div>
+          <div class="sched-field-hint">5 段：分 时 日 月 周，按本地时间（例如工作日 09:00）。下次执行时间由表达式自动计算。</div>
         </div>
       </section>
 

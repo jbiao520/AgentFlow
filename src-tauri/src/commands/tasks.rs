@@ -202,7 +202,7 @@ pub fn dispatch_plan(
     state: State<'_, DbState>,
     plan_id: String,
 ) -> Result<DispatchResult, String> {
-    with_db(&state, |c| svc_dispatch(c, &plan_id))
+    svc_dispatch(&state.conn, &plan_id)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

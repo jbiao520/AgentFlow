@@ -3,7 +3,8 @@ use crate::db::now_iso8601;
 use crate::engines::runner::CancelToken;
 use crate::repo::{
     has_active_schedule_run, list_due_schedules, mark_schedule_fired, mark_schedule_manual_run,
-    mark_schedule_skipped, next_window_open_at, outside_run_window, Schedule,
+    mark_schedule_skipped, next_window_open_at, outside_run_window, realign_cron_next_runs,
+    Schedule,
 };
 use crate::services::notify::notify_schedule_failed;
 use crate::services::template_run::instantiate_template_run;
@@ -27,6 +28,17 @@ pub fn start_scheduler(
             "[AgentFlow] schedule ticker started (every {TICK_SECS}s) at {}",
             now_iso8601()
         );
+        // Cron expressions are local wall-clock; realign any rows still holding
+        // next_run_at values computed under the old UTC interpretation.
+        if let Ok(conn) = db.lock() {
+            match realign_cron_next_runs(&conn) {
+                Ok(n) if n > 0 => {
+                    eprintln!("[AgentFlow] realigned {n} cron schedule(s) to local timezone");
+                }
+                Ok(_) => {}
+                Err(e) => eprintln!("[AgentFlow] cron realign failed: {e}"),
+            }
+        }
         loop {
             if let Err(e) = tick_once(&app, &db, &cancels) {
                 eprintln!("[AgentFlow] schedule tick error: {e}");

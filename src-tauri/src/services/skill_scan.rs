@@ -30,33 +30,99 @@ fn sha256_hex(bytes: &[u8]) -> String {
     hex_encode(hasher.finalize())
 }
 
-/// Parse optional YAML frontmatter `description` or first non-empty paragraph.
-pub fn parse_skill_meta(content: &str, stem: &str) -> (String, Option<String>) {
-    let title = stem.to_string();
+fn unquote_yaml_scalar(raw: &str) -> String {
+    let s = raw.trim();
+    if (s.starts_with('"') && s.ends_with('"') && s.len() >= 2)
+        || (s.starts_with('\'') && s.ends_with('\'') && s.len() >= 2)
+    {
+        s[1..s.len() - 1].to_string()
+    } else {
+        s.to_string()
+    }
+}
+
+/// Parse YAML frontmatter `name` / `description` (inline or `>` / `|` block).
+/// Falls back to `fallback_title` and first body paragraph when missing.
+pub fn parse_skill_meta(content: &str, fallback_title: &str) -> (String, Option<String>) {
+    let mut title = fallback_title.to_string();
     let trimmed = content.trim_start_matches('\u{feff}');
 
-    if let Some(rest) = trimmed.strip_prefix("---") {
-        if let Some(end) = rest.find("\n---") {
-            let fm = &rest[..end];
-            for line in fm.lines() {
-                let line = line.trim();
-                if let Some(val) = line.strip_prefix("description:") {
-                    let desc = val.trim().trim_matches('"').trim_matches('\'').to_string();
-                    if !desc.is_empty() {
-                        return (title, Some(desc));
-                    }
-                }
-            }
-            // Fall through to body after frontmatter
-            let body = rest[end + 4..].trim();
-            if let Some(desc) = first_paragraph(body) {
-                return (title, Some(desc));
-            }
-            return (title, None);
+    let Some(rest) = trimmed.strip_prefix("---") else {
+        return (title, first_paragraph(trimmed));
+    };
+    // Allow optional newline right after opening ---
+    let rest = rest.strip_prefix('\n').unwrap_or(rest);
+    let Some(end) = rest.find("\n---") else {
+        return (title, first_paragraph(trimmed));
+    };
+    let fm = &rest[..end];
+    let body = rest[end + 4..].trim();
+
+    let mut name: Option<String> = None;
+    let mut description: Option<String> = None;
+    let lines: Vec<&str> = fm.lines().collect();
+    let mut i = 0usize;
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed_line = line.trim();
+        if trimmed_line.is_empty() || trimmed_line.starts_with('#') {
+            i += 1;
+            continue;
         }
+
+        if let Some(val) = trimmed_line.strip_prefix("name:") {
+            let v = unquote_yaml_scalar(val);
+            if !v.is_empty() {
+                name = Some(v);
+            }
+            i += 1;
+            continue;
+        }
+
+        if let Some(val) = trimmed_line.strip_prefix("description:") {
+            let after = val.trim();
+            if after == ">" || after == "|" || after == ">-" || after == "|-" {
+                let mut block = String::new();
+                i += 1;
+                while i < lines.len() {
+                    let next = lines[i];
+                    // Block ends at next non-empty, non-indented key line
+                    if !next.is_empty() && !next.starts_with(' ') && !next.starts_with('\t') {
+                        break;
+                    }
+                    let piece = next.trim();
+                    if !piece.is_empty() {
+                        if !block.is_empty() {
+                            block.push(' ');
+                        }
+                        block.push_str(piece);
+                    }
+                    i += 1;
+                }
+                let desc = block.trim().to_string();
+                if !desc.is_empty() {
+                    description = Some(desc);
+                }
+                continue;
+            }
+            let desc = unquote_yaml_scalar(after);
+            if !desc.is_empty() {
+                description = Some(desc);
+            }
+            i += 1;
+            continue;
+        }
+
+        i += 1;
     }
 
-    (title, first_paragraph(trimmed))
+    if let Some(n) = name {
+        title = n;
+    }
+    if description.is_none() {
+        description = first_paragraph(body);
+    }
+    (title, description)
 }
 
 fn first_paragraph(body: &str) -> Option<String> {
@@ -89,7 +155,15 @@ fn first_paragraph(body: &str) -> Option<String> {
     }
 }
 
-fn walk_skill_mds(skills_root: &Path, base: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+fn is_skill_md(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.eq_ignore_ascii_case("skill.md"))
+        .unwrap_or(false)
+}
+
+/// Recursively collect only `skill.md` / `SKILL.md` under `.agent/skills/`.
+fn walk_skill_mds(skills_root: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
     if !skills_root.exists() {
         return Ok(());
     }
@@ -98,13 +172,8 @@ fn walk_skill_mds(skills_root: &Path, base: &Path, out: &mut Vec<PathBuf>) -> Re
         let entry = entry.map_err(|e| format!("read skills entry: {e}"))?;
         let path = entry.path();
         if path.is_dir() {
-            walk_skill_mds(&path, base, out)?;
-        } else if path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|e| e.eq_ignore_ascii_case("md"))
-            .unwrap_or(false)
-        {
+            walk_skill_mds(&path, out)?;
+        } else if is_skill_md(&path) {
             out.push(path);
         }
     }
@@ -118,22 +187,28 @@ fn relative_to_workspace(workspace: &Path, file: &Path) -> Result<String, String
     Ok(rel.to_string_lossy().replace('\\', "/"))
 }
 
+fn skill_fallback_title(file: &Path) -> String {
+    // Prefer parent folder name (e.g. `.agent/skills/web-crawler/skill.md` → web-crawler)
+    file.parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .filter(|n| !n.eq_ignore_ascii_case("skills"))
+        .map(|n| n.to_string())
+        .unwrap_or_else(|| "skill".into())
+}
+
 fn scan_workspace_skills(workspace: &Path) -> Result<Vec<ScannedSkill>, String> {
     let skills_dir = workspace.join(".agent").join("skills");
     let mut files = Vec::new();
-    walk_skill_mds(&skills_dir, workspace, &mut files)?;
+    walk_skill_mds(&skills_dir, &mut files)?;
     files.sort();
 
     let mut scanned = Vec::with_capacity(files.len());
     for file in files {
         let bytes = fs::read(&file).map_err(|e| format!("read {}: {e}", file.display()))?;
         let content = String::from_utf8_lossy(&bytes);
-        let stem = file
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("skill")
-            .to_string();
-        let (title, description) = parse_skill_meta(&content, &stem);
+        let fallback = skill_fallback_title(&file);
+        let (title, description) = parse_skill_meta(&content, &fallback);
         let relative_path = relative_to_workspace(workspace, &file)?;
         scanned.push(ScannedSkill {
             relative_path,
@@ -271,20 +346,50 @@ mod tests {
     }
 
     #[test]
-    fn sync_two_md_files_add_remove_preserve_enabled() {
+    fn parse_frontmatter_name_and_folded_description() {
+        let content = r#"---
+name: investment-news-risk
+description: >
+  对投资/财经新闻做连带风险分析。
+  Use when the user asks for 投资新闻风险.
+  也可在用户运行 /investment-news-risk 时使用。
+---
+
+# Body should be ignored for listing
+"#;
+        let (title, desc) = parse_skill_meta(content, "fallback");
+        assert_eq!(title, "investment-news-risk");
+        let desc = desc.expect("description");
+        assert!(desc.contains("连带风险分析"));
+        assert!(desc.contains("投资新闻风险"));
+        assert!(desc.contains("/investment-news-risk"));
+        assert!(!desc.contains("Body should"));
+    }
+
+    #[test]
+    fn sync_only_skill_md_add_remove_preserve_enabled() {
         let dir = TempDir::new().unwrap();
         let ws = dir.path().join("ws");
-        fs::create_dir_all(ws.join(".agent/skills/nested")).unwrap();
+        fs::create_dir_all(ws.join(".agent/skills/alpha")).unwrap();
+        fs::create_dir_all(ws.join(".agent/skills/beta")).unwrap();
+        // Extra markdown next to skill.md must be ignored
         write_skill(
             &ws,
-            ".agent/skills/alpha.md",
-            "---\ndescription: Alpha skill\n---\n\n# Alpha\n",
+            ".agent/skills/alpha/notes.md",
+            "# Notes\nShould not be scanned.\n",
         );
         write_skill(
             &ws,
-            ".agent/skills/nested/beta.md",
-            "First paragraph about beta.\n\nMore text.\n",
+            ".agent/skills/alpha/skill.md",
+            "---\nname: alpha-skill\ndescription: Alpha skill\n---\n\n# Alpha\n",
         );
+        write_skill(
+            &ws,
+            ".agent/skills/beta/SKILL.md",
+            "---\nname: beta-skill\ndescription: First paragraph about beta.\n---\n\nMore text.\n",
+        );
+        // Flat arbitrary .md under skills/ must also be ignored
+        write_skill(&ws, ".agent/skills/orphan.md", "orphan\n");
 
         let conn = open_db_at(&dir.path().join("t.db")).unwrap();
         let agent = upsert_agent(
@@ -310,19 +415,20 @@ mod tests {
         assert_eq!(skills.len(), 2);
         let alpha = skills
             .iter()
-            .find(|s| s.relative_path.ends_with("alpha.md"))
+            .find(|s| s.relative_path.ends_with("alpha/skill.md"))
             .unwrap();
+        assert_eq!(alpha.title.as_deref(), Some("alpha-skill"));
         assert_eq!(alpha.description.as_deref(), Some("Alpha skill"));
         assert!(alpha.enabled);
 
         set_skill_enabled(&conn, &alpha.id, false).unwrap();
 
         // Remove beta, tweak alpha content → preserve disabled
-        fs::remove_file(ws.join(".agent/skills/nested/beta.md")).unwrap();
+        fs::remove_file(ws.join(".agent/skills/beta/SKILL.md")).unwrap();
         write_skill(
             &ws,
-            ".agent/skills/alpha.md",
-            "---\ndescription: Alpha skill v2\n---\n\n# Alpha\n",
+            ".agent/skills/alpha/skill.md",
+            "---\nname: alpha-skill\ndescription: Alpha skill v2\n---\n\n# Alpha\n",
         );
 
         let r2 = sync_agent_skills(&conn, &agent.id).unwrap();

@@ -1,13 +1,19 @@
 /**
- * Settings page: left secondary nav + right panels (brain / cli / about).
+ * Settings page: left secondary nav + right panels (brain / cli / about / appearance / language).
  */
 import { initOrchestratorSettings, loadOrchestratorSettings } from "../orchestrator/settings";
 import { initSettingsAbout, refreshSettingsAbout } from "./about";
 import { initSettingsCli, refreshCliWidget } from "./cli";
 
-export type SettingsSection = "brain" | "cli" | "about" | "language";
+export type SettingsSection = "brain" | "cli" | "about" | "appearance" | "language";
 
-const SECTIONS: readonly SettingsSection[] = ["brain", "cli", "about", "language"] as const;
+const SECTIONS: readonly SettingsSection[] = [
+  "brain",
+  "cli",
+  "about",
+  "appearance",
+  "language",
+] as const;
 
 let currentSection: SettingsSection = "brain";
 let brainInited = false;

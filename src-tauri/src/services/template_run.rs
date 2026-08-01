@@ -154,17 +154,12 @@ pub fn instantiate_template_run(
         });
     }
 
-    let dispatched = {
-        let conn = db
-            .lock()
-            .map_err(|e| format!("db lock poisoned: {e}"))?;
-        dispatch_plan_for_schedule(
-            &conn,
-            &plan_id,
-            schedule_id,
-            schedule_id.is_some() && is_manual,
-        )?
-    };
+    let dispatched = dispatch_plan_for_schedule(
+        db,
+        &plan_id,
+        schedule_id,
+        schedule_id.is_some() && is_manual,
+    )?;
 
     let started = spawn_dag_run(
         app.clone(),

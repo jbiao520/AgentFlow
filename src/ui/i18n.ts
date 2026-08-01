@@ -6,7 +6,7 @@ const STORAGE_KEY = "agentflow.language";
 const LANGUAGE_EVENT = "agentflow-language-change";
 
 const TRANSLATIONS: Record<string, string> = {
-  "-fast 变体": "-fast variant",
+  "更快，质量可能略低": "Faster, may trade quality",
   "（估算）": " (estimated)",
   "（含估算）": " (includes estimates)",
   "（请先在模版库创建模版）": "(Create a template in Templates first)",
@@ -19,7 +19,7 @@ const TRANSLATIONS: Record<string, string> = {
   "⏸ 暂停日志流": "⏸ Pause log stream",
   "▶ 恢复日志流": "▶ Resume log stream",
   "0 运行": "0 running",
-  "5 段：分 时 日 月 周（例如工作日 09:00）。下次执行时间由表达式自动计算。": "5 fields: minute hour day month weekday (e.g. weekdays at 09:00). Next run is computed from the expression.",
+  "5 段：分 时 日 月 周，按本地时间（例如工作日 09:00）。下次执行时间由表达式自动计算。": "5 fields: minute hour day month weekday, in local time (e.g. weekdays at 09:00). Next run is computed from the expression.",
   "按 7 日调用排序": "Sorted by 7-day usage",
   按间隔重复: "Repeat on interval",
   "按引擎 / 模型汇总 · 累计全部任务": "By engine / model · across all tasks",
@@ -179,6 +179,20 @@ const TRANSLATIONS: Record<string, string> = {
   "结构（只读）": "structure (read-only)",
   结束: "End",
   界面语言: "Interface language",
+  外观: "Appearance",
+  "浅色 / 深色 / 跟随系统": "Light / Dark / System",
+  外观主题: "Appearance theme",
+  "选择浅色、深色，或跟随系统外观。默认跟随系统。":
+    "Choose light, dark, or follow the system appearance. Defaults to system.",
+  主题模式: "Theme mode",
+  浅色: "Light",
+  深色: "Dark",
+  跟随系统: "System",
+  "深色主题采用 Deep Slate，适合终端日志、DAG 与 Diff 预览。":
+    "Dark theme uses Deep Slate — ideal for terminal logs, DAG, and Diff previews.",
+  "主题：跟随系统（点击切换）": "Theme: System (click to switch)",
+  "主题：浅色（点击切换）": "Theme: Light (click to switch)",
+  "主题：深色（点击切换）": "Theme: Dark (click to switch)",
   今日完成调度: "Tasks completed today",
   "尽量写清对象、频率与验收标准": "Include targets, frequency, and acceptance criteria",
   "近 30 天还没有 Agent 被调度。": "No agents were scheduled in the last 30 days.",
@@ -327,7 +341,7 @@ const TRANSLATIONS: Record<string, string> = {
   "实例化变量 · 校验 Plan ·": "Instantiate variables · validate plan ·",
   实时终端日志流: "Live terminal logs",
   "使用的 CLI 引擎": "CLI engine",
-  "使用模型的 -fast 变体（更快，质量可能略低）": "Use the model",
+  "使用模型的 Fast 变体（更快，质量可能略低）": "Use the model's Fast variant (faster, may trade quality)",
   视图工作区: "Menu",
   手动: "Manual",
   首次执行时间: "First run time",

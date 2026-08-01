@@ -433,6 +433,15 @@ export function renderOrchestrateError(error: string, raw: string | null): void 
   setDispatchEnabled(false);
 }
 
+function setCommanderThinking(active: boolean): void {
+  document
+    .querySelector(".commander-prompt-box")
+    ?.classList.toggle("is-thinking", active);
+  document
+    .querySelector(".commander-hero")
+    ?.classList.toggle("is-thinking", active);
+}
+
 async function runOrchestrate(): Promise<void> {
   const textarea = document.getElementById(
     "commander-prompt-text",
@@ -444,6 +453,7 @@ async function runOrchestrate(): Promise<void> {
     return;
   }
 
+  setCommanderThinking(true);
   if (btn) {
     btn.classList.add("is-busy");
     btn.innerHTML =
@@ -481,6 +491,7 @@ async function runOrchestrate(): Promise<void> {
     renderOrchestrateError(msg, null);
     showToast(`调度失败: ${formatActionableError(msg)}`, { kind: "error" });
   } finally {
+    setCommanderThinking(false);
     if (btn) {
       btn.classList.remove("is-busy");
       btn.innerHTML = ORCH_RUN_BTN_HTML;

@@ -273,7 +273,7 @@ pub fn execute_node_with_db(
     node_id: &str,
     cancel: &CancelToken,
 ) -> Result<bool, String> {
-    let (agent_name, req, artifacts, prompt_title, cwd_path) = {
+    let (agent_name, req, artifacts, prompt_title, cwd_path, requested_effort) = {
         let conn = db.lock().map_err(|e| format!("db lock: {e}"))?;
         let node = get_task_node(&conn, node_id)?
             .ok_or_else(|| format!("node not found: {node_id}"))?;
@@ -369,11 +369,8 @@ pub fn execute_node_with_db(
         }
 
         let model = node.model.clone().filter(|m| !m.trim().is_empty());
-        let reasoning = crate::services::cli_models::effective_reasoning_effort(
-            &engine,
-            model.as_deref(),
-            node.reasoning_effort.as_deref(),
-        );
+        // Defer catalog lookup until after unlock — CLI can hang and must not hold the DB mutex.
+        let requested_effort = node.reasoning_effort.clone();
         let profile = get_agent_profile(&conn, agent_id)?;
         let fast = engine_options_fast(
             profile
@@ -385,14 +382,28 @@ pub fn execute_node_with_db(
             cwd,
             prompt: full_prompt,
             model,
-            reasoning,
+            reasoning: None,
             fast,
             extra_args: vec![],
             env: HashMap::new(),
             stream_output: true,
         };
-        (agent.name.clone(), req, artifacts, prompt_title, cwd_path)
-    }; // DB unlocked before spawn
+        (
+            agent.name.clone(),
+            req,
+            artifacts,
+            prompt_title,
+            cwd_path,
+            requested_effort,
+        )
+    }; // DB unlocked before CLI catalog / engine spawn
+
+    let mut req = req;
+    req.reasoning = crate::services::cli_models::effective_reasoning_effort(
+        &req.engine,
+        req.model.as_deref(),
+        requested_effort.as_deref(),
+    );
 
     let db_log = Arc::clone(db);
     let app_log = app.clone();

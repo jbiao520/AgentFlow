@@ -21,6 +21,7 @@ import { initTemplateLibrary } from "./ui/templates/page";
 import { initSaveTemplateWizard } from "./ui/templates/save-wizard";
 import { initI18n } from "./ui/i18n";
 import { initSplitResize } from "./ui/split-resize";
+import { initTheme } from "./ui/theme";
 
 function mountApp(): void {
   const root = document.getElementById("app");
@@ -28,6 +29,7 @@ function mountApp(): void {
     throw new Error("#app root missing");
   }
   root.innerHTML = shellHtml;
+  initTheme();
   initI18n();
   // Upgrade static <select class="form-select"> controls (filters, settings, modals).
   enhanceSelectsIn(root);

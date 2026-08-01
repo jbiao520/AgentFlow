@@ -91,11 +91,13 @@ export function renderDag(
   const w = 170;
   const h = 70;
   const gap = 40;
-  const pad = 20;
-  const width = pad * 2 + sorted.length * w + (sorted.length - 1) * gap;
-  const height = 110;
+  const padX = 24;
+  const padY = 28;
+  const width = padX * 2 + sorted.length * w + (sorted.length - 1) * gap;
+  const height = padY * 2 + h;
 
   const idToIndex = new Map(sorted.map((n, i) => [n.id, i]));
+  const midY = padY + h / 2;
 
   let edges = "";
   for (const n of sorted) {
@@ -106,39 +108,65 @@ export function renderDag(
     for (const d of deps) {
       const fi = idToIndex.get(d);
       if (fi === undefined) continue;
-      const x1 = pad + fi * (w + gap) + w;
-      const x2 = pad + ti * (w + gap);
-      const y = 55;
-      const stroke = statusStroke(
-        sorted[fi]?.status === "success" ? "success" : "pending",
-      );
+      const from = sorted[fi];
+      const x1 = padX + fi * (w + gap) + w;
+      const x2 = padX + ti * (w + gap);
       const mx = (x1 + x2) / 2;
-      edges += `<path d="M ${x1} ${y} C ${mx} ${y}, ${mx} ${y}, ${x2} ${y}" fill="none" stroke="${stroke}" stroke-width="2" marker-end="url(#dag-arrow)" opacity="0.85"/>`;
+      const dPath = `M ${x1} ${midY} C ${mx} ${midY}, ${mx} ${midY}, ${x2} ${midY}`;
+      const flowing = from?.status === "success" && n.status === "running";
+      if (flowing) {
+        edges += `<path class="dag-edge-base" d="${dPath}" fill="none" stroke="rgba(79, 70, 229, 0.22)" stroke-width="2.5" marker-end="url(#dag-arrow-flow)"/>`;
+        edges += `<path class="dag-edge-flow" d="${dPath}" fill="none" stroke="url(#dag-edge-grad)" stroke-width="2.2" stroke-linecap="round"/>`;
+      } else {
+        const stroke = statusStroke(
+          from?.status === "success" ? "success" : "pending",
+        );
+        edges += `<path class="dag-edge" d="${dPath}" fill="none" stroke="${stroke}" stroke-width="2" marker-end="url(#dag-arrow)" opacity="0.85"/>`;
+      }
     }
   }
 
   let bodies = "";
   sorted.forEach((n, i) => {
-    const x = pad + i * (w + gap);
+    const x = padX + i * (w + gap);
     const stroke = statusStroke(n.status);
     const isSel = selectedId === n.id;
-    const sw = isSel ? 2.5 : 1.2;
-    const fill = isSel ? "rgba(22, 78, 43, 0.06)" : "#ffffff";
+    const isRunning = n.status === "running";
+    const sw = isSel ? 2.5 : isRunning ? 1.8 : 1.2;
+    const fill = isSel
+      ? "var(--accent-tint)"
+      : isRunning
+        ? "var(--accent-tint)"
+        : "var(--bg-card)";
     const title =
       n.title.length > 20 ? `${n.title.slice(0, 18)}…` : n.title;
     const engine = n.cli_engine || "—";
-    bodies += `<g transform="translate(${x}, 20)" style="cursor:pointer;" data-node-id="${escapeXml(n.id)}">
-      <rect width="${w}" height="${h}" rx="9" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+    const pulse =
+      isRunning
+        ? `<rect class="dag-pulse-ring dag-pulse-ring--a" x="-6" y="-6" width="${w + 12}" height="${h + 12}" rx="14" fill="none"/>
+      <rect class="dag-pulse-ring dag-pulse-ring--b" x="-6" y="-6" width="${w + 12}" height="${h + 12}" rx="14" fill="none"/>`
+        : "";
+    bodies += `<g class="dag-node${isRunning ? " is-running" : ""}${isSel ? " is-selected" : ""}" transform="translate(${x}, ${padY})" style="cursor:pointer;" data-node-id="${escapeXml(n.id)}">
+      ${pulse}
+      <rect class="dag-node-card" width="${w}" height="${h}" rx="9" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
       <text x="12" y="24" fill="var(--fg-primary)" font-size="11.5" font-weight="700" font-family="var(--font-mono)">${i + 1}. ${escapeXml(title)}</text>
       <text x="12" y="42" fill="${stroke}" font-size="10.5" font-weight="700">${escapeXml(statusLabel(n.status))}</text>
       <text x="12" y="58" fill="var(--fg-muted)" font-size="9.5" font-family="var(--font-mono)">${escapeXml(engine)} · retry: ${n.retry_count}</text>
     </g>`;
   });
 
-  container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" style="width:100%; height:${height}px; background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm);">
+  container.innerHTML = `<svg class="task-dag-svg" viewBox="0 0 ${width} ${height}" style="width:100%; height:${height}px;">
     <defs>
+      <linearGradient id="dag-edge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#4f46e5"/>
+        <stop offset="55%" stop-color="#06b6d4"/>
+        <stop offset="100%" stop-color="#4f46e5"/>
+      </linearGradient>
       <marker id="dag-arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
         <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent-primary)"/>
+      </marker>
+      <marker id="dag-arrow-flow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M 0 1 L 10 5 L 0 9 z" fill="#06b6d4"/>
       </marker>
     </defs>
     ${edges}${bodies}
@@ -228,7 +256,7 @@ export function renderPlanDag(
       const x2 = to.x;
       const y2 = to.cy;
       const mx = (x1 + x2) / 2;
-      edges += `<path d="M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}" fill="none" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#tpl-dag-arrow)"/>`;
+      edges += `<path d="M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}" fill="none" stroke="var(--fg-muted)" stroke-width="1.4" marker-end="url(#tpl-dag-arrow)"/>`;
     }
   }
 
@@ -241,18 +269,18 @@ export function renderPlanDag(
     const engine = item.cli_engine ? truncate(item.cli_engine, 14) : "";
     const sub = engine ? `${agent} · ${engine}` : agent;
     bodies += `<g transform="translate(${p.x}, ${p.y})" class="tpl-dag-node">
-      <rect width="${colW}" height="${rowH}" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
-      <rect width="3" height="${rowH}" rx="1.5" fill="#4f46e5"/>
-      <text x="14" y="24" fill="#0f172a" font-size="11" font-weight="700" font-family="var(--font-mono)">${idx + 1}. ${escapeXml(title)}</text>
-      <text x="14" y="42" fill="#4f46e5" font-size="10" font-weight="600">${escapeXml(agent)}</text>
-      <text x="14" y="58" fill="#64748b" font-size="9" font-family="var(--font-mono)">${escapeXml(sub === agent ? `id:${truncate(item.id, 16)}` : engine)}</text>
+      <rect width="${colW}" height="${rowH}" rx="8" fill="var(--bg-card)" stroke="var(--border-hover)" stroke-width="1.2"/>
+      <rect width="3" height="${rowH}" rx="1.5" fill="var(--accent-primary)"/>
+      <text x="14" y="24" fill="var(--fg-primary)" font-size="11" font-weight="700" font-family="var(--font-mono)">${idx + 1}. ${escapeXml(title)}</text>
+      <text x="14" y="42" fill="var(--accent-primary)" font-size="10" font-weight="600">${escapeXml(agent)}</text>
+      <text x="14" y="58" fill="var(--fg-muted)" font-size="9" font-family="var(--font-mono)">${escapeXml(sub === agent ? `id:${truncate(item.id, 16)}` : engine)}</text>
     </g>`;
   });
 
   container.innerHTML = `<svg class="tpl-dag-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMinYMid meet" role="img" aria-label="模版 DAG 拓扑">
     <defs>
       <marker id="tpl-dag-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-        <path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/>
+        <path d="M0,0 L6,3 L0,6 Z" fill="var(--fg-muted)"/>
       </marker>
     </defs>
     ${edges}${bodies}

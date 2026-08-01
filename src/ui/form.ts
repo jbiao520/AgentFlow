@@ -54,6 +54,11 @@ function transferInlineWidth(el: HTMLSelectElement, wrapper: HTMLElement): void 
   }
 }
 
+/** Strip trailing " -" / " —" left by catalog dumps or effort stripping. */
+function tidyModelTitle(s: string): string {
+  return s.replace(/\s*[—–-]\s*$/u, "").trim();
+}
+
 /** Split catalog model id into display title + secondary meta line. */
 export function describeModelOption(
   id: string,
@@ -61,7 +66,8 @@ export function describeModelOption(
 ): { title: string; meta: string } {
   const raw = (id || "").trim();
   if (!raw) {
-    return { title: label?.trim() || "—", meta: "" };
+    // Avoid a lone "—" glyph in the closed control / empty option row.
+    return { title: (label || "").trim(), meta: "" };
   }
 
   const hasProvider = raw.includes("/");
@@ -70,20 +76,23 @@ export function describeModelOption(
   const bare = name.replace(/^cursor-/, "");
 
   const labelTrim = (label || "").trim();
-  // Prefer a human label when it isn't just the raw id / "id — name" dump.
+  // Prefer a human label; if the catalog dumped "id - Name" / "id — Name", take Name.
   let title = bare;
-  if (
-    labelTrim &&
-    labelTrim !== raw &&
-    !labelTrim.startsWith(`${raw} `) &&
-    !labelTrim.startsWith(`${raw}—`) &&
-    !labelTrim.startsWith(`${raw} —`)
-  ) {
-    const em = labelTrim.includes(" — ")
-      ? labelTrim.split(" — ").pop()!.trim()
-      : labelTrim;
-    if (em) title = em;
+  if (labelTrim && labelTrim !== raw) {
+    let candidate = labelTrim;
+    for (const sep of [`${raw} — `, `${raw}—`, `${raw} - `, `${raw} `]) {
+      if (candidate.startsWith(sep)) {
+        candidate = candidate.slice(sep.length).trim();
+        break;
+      }
+    }
+    if (candidate.includes(" — ")) {
+      candidate = candidate.split(" — ").pop()!.trim();
+    }
+    candidate = tidyModelTitle(candidate);
+    if (candidate) title = candidate;
   }
+  title = tidyModelTitle(title) || bare;
 
   if (provider) {
     return { title, meta: `${provider} · ${bare}` };

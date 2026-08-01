@@ -38,7 +38,7 @@ pub async fn sandbox_run(
         return Err("prompt must not be empty".into());
     }
 
-    let req = {
+    let (req, requested_effort) = {
         let conn = db
             .conn
             .lock()
@@ -72,29 +72,38 @@ pub async fn sandbox_run(
             .as_ref()
             .and_then(|p| p.preferred_model.clone())
             .filter(|m| !m.trim().is_empty());
-        let reasoning = crate::services::cli_models::effective_reasoning_effort(
-            &engine,
-            model.as_deref(),
-            profile.as_ref().and_then(|p| p.reasoning_effort.as_deref()),
-        );
+        // Defer catalog lookup until after unlock — CLI can hang and must not hold the DB mutex.
+        let requested_effort = profile
+            .as_ref()
+            .and_then(|p| p.reasoning_effort.clone());
         let fast = crate::services::cli_models::engine_options_fast(
             profile
                 .as_ref()
                 .and_then(|p| p.engine_options_json.as_deref()),
         );
 
-        EngineRunRequest {
-            engine,
-            cwd,
-            prompt,
-            model,
-            reasoning,
-            fast,
-            extra_args: vec![],
-            env: HashMap::new(),
-            stream_output: true,
-        }
-    }; // DB lock released before long-running spawn
+        (
+            EngineRunRequest {
+                engine,
+                cwd,
+                prompt,
+                model,
+                reasoning: None,
+                fast,
+                extra_args: vec![],
+                env: HashMap::new(),
+                stream_output: true,
+            },
+            requested_effort,
+        )
+    }; // DB lock released before CLI catalog / long-running spawn
+
+    let mut req = req;
+    req.reasoning = crate::services::cli_models::effective_reasoning_effort(
+        &req.engine,
+        req.model.as_deref(),
+        requested_effort.as_deref(),
+    );
 
     let cancel = CancelToken::new();
     {

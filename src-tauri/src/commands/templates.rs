@@ -379,7 +379,7 @@ pub fn instantiate_template(
         .map(|p| p.id.clone())
         .ok_or_else(|| "orchestrate succeeded but plan_row missing".to_string())?;
 
-    let dispatched = with_db(&state, |c| svc_dispatch(c, &plan_id))?;
+    let dispatched = svc_dispatch(&state.conn, &plan_id)?;
     let started = start_run(app, state, runs, dispatched.run.id.clone(), args.concurrency)?;
 
     Ok(InstantiateTemplateResult {

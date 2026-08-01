@@ -31,6 +31,11 @@
       </div>
     </div>
     <div class="titlebar-right">
+      <button type="button" class="theme-cycle-btn" id="theme-cycle-btn" data-theme-current="system" title="主题：跟随系统（点击切换）" aria-label="主题：跟随系统（点击切换）">
+        <svg data-theme-icon="light" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        <svg data-theme-icon="dark" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg>
+        <svg data-theme-icon="system" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      </button>
       <div class="sys-status-badge" id="app-sys-status" title="SQLite 核心数据库与系统连通状态">
         <span class="status-dot"></span>
         <span class="sys-status-text">系统就绪</span>
@@ -336,7 +341,7 @@
                   <div class="fast-toggle-row">
                     <div class="fast-toggle-copy">
                       <label class="form-label" for="detail-fast-toggle">Fast</label>
-                      <div class="form-hint">-fast 变体</div>
+                      <div class="form-hint">更快，质量可能略低</div>
                     </div>
                     <label class="switch">
                       <input type="checkbox" id="detail-fast-toggle" />
@@ -718,6 +723,15 @@
                 <span class="settings-nav-hint">版本与数据目录</span>
               </span>
             </button>
+            <button type="button" class="settings-nav-item" data-settings-section="appearance" role="tab" aria-selected="false">
+              <span class="settings-nav-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+              </span>
+              <span class="settings-nav-text">
+                <span class="settings-nav-label">外观</span>
+                <span class="settings-nav-hint">浅色 / 深色 / 跟随系统</span>
+              </span>
+            </button>
             <button type="button" class="settings-nav-item" data-settings-section="language" role="tab" aria-selected="false">
               <span class="settings-nav-icon" aria-hidden="true">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.5 5.5 3.5 9S14.5 18.5 12 21c-2.5-2.5-3.5-5.5-3.5-9S9.5 5.5 12 3z"/></svg>
@@ -786,7 +800,7 @@
                       <div class="fast-toggle-row">
                         <div class="fast-toggle-copy">
                           <label class="form-label" for="orch-fast-toggle">Fast</label>
-                          <div class="form-hint">-fast variant</div>
+                          <div class="form-hint">Faster, may trade quality</div>
                         </div>
                         <label class="switch">
                           <input type="checkbox" id="orch-fast-toggle" />
@@ -857,6 +871,41 @@
                 </dl>
                 <div class="settings-about-actions">
                   <button type="button" class="btn btn-secondary btn-sm" id="btn-reveal-db-path" disabled>在 Finder 中显示数据库</button>
+                </div>
+              </div>
+            </section>
+
+            <!-- Appearance -->
+            <section class="settings-panel" id="settings-panel-appearance" data-settings-panel="appearance" role="tabpanel" hidden>
+              <div class="settings-section-card">
+                <div class="orch-settings-head">
+                  <div class="orch-settings-title-wrap">
+                    <span class="orch-settings-icon" aria-hidden="true">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+                    </span>
+                    <div>
+                      <div class="orch-settings-title">外观主题</div>
+                      <div class="orch-settings-sub">选择浅色、深色，或跟随系统外观。默认跟随系统。</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="form-group" style="margin-top:18px;">
+                  <label class="form-label">主题模式</label>
+                  <div class="theme-segment" role="radiogroup" aria-label="主题模式">
+                    <button type="button" class="theme-seg" data-theme-option="light" role="radio" aria-checked="false">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+                      <span>浅色</span>
+                    </button>
+                    <button type="button" class="theme-seg" data-theme-option="dark" role="radio" aria-checked="false">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg>
+                      <span>深色</span>
+                    </button>
+                    <button type="button" class="theme-seg" data-theme-option="system" role="radio" aria-checked="true">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                      <span>跟随系统</span>
+                    </button>
+                  </div>
+                  <div class="form-hint" style="margin-top:10px;">深色主题采用 Deep Slate，适合终端日志、DAG 与 Diff 预览。</div>
                 </div>
               </div>
             </section>

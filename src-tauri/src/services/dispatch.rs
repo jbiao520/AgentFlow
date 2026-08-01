@@ -1,6 +1,6 @@
 //! Dispatch: create TaskRun + DAG nodes from a validated Plan.
 use crate::repo::{
-    create_task_run_for_schedule, get_plan, insert_task_nodes, list_agents,
+    create_task_run_for_schedule, get_plan, insert_task_nodes, list_agents, Agent,
     TaskNode, TaskNodeInsert, TaskRun,
 };
 use crate::services::orchestrate::{
@@ -8,6 +8,7 @@ use crate::services::orchestrate::{
 };
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DispatchResult {
@@ -26,24 +27,53 @@ pub fn load_plan_analysis(
 }
 
 /// Create a new run + pending nodes from plan. Prefer new run each dispatch (idempotent re-dispatch).
-pub fn dispatch_plan(conn: &Connection, plan_id: &str) -> Result<DispatchResult, String> {
-    dispatch_plan_for_schedule(conn, plan_id, None, false)
+///
+/// Takes the shared DB mutex so CLI model-catalog preflight runs **outside** the lock.
+pub fn dispatch_plan(
+    db: &Arc<Mutex<Connection>>,
+    plan_id: &str,
+) -> Result<DispatchResult, String> {
+    dispatch_plan_for_schedule(db, plan_id, None, false)
 }
 
 pub fn dispatch_plan_for_schedule(
-    conn: &Connection,
+    db: &Arc<Mutex<Connection>>,
     plan_id: &str,
     schedule_id: Option<&str>,
     is_manual: bool,
 ) -> Result<DispatchResult, String> {
-    let (_plan_id, goal_id, analysis) = load_plan_analysis(conn, plan_id)?;
+    let (goal_id, mut analysis, agents) = {
+        let conn = db.lock().map_err(|e| format!("db lock: {e}"))?;
+        let (_plan_id, goal_id, analysis) = load_plan_analysis(&conn, plan_id)?;
+        // Re-validate structural constraints before any writes.
+        let validated = validate_plan(&conn, analysis)?;
+        let agents = list_agents(&conn)?;
+        (goal_id, validated.plan, agents)
+    }; // unlock before CLI catalog preflight
 
-    // Re-validate structural constraints + hard runtime preflight before any writes.
-    let validated = validate_plan(conn, analysis)?;
-    let mut analysis = validated.plan;
     let _ = preflight_for_dispatch(&mut analysis)?;
-    let agents = list_agents(conn)?;
 
+    let conn = db.lock().map_err(|e| format!("db lock: {e}"))?;
+    commit_dispatch(
+        &conn,
+        plan_id,
+        &goal_id,
+        &analysis,
+        &agents,
+        schedule_id,
+        is_manual,
+    )
+}
+
+fn commit_dispatch(
+    conn: &Connection,
+    plan_id: &str,
+    goal_id: &str,
+    analysis: &PlanAnalysis,
+    agents: &[Agent],
+    schedule_id: Option<&str>,
+    is_manual: bool,
+) -> Result<DispatchResult, String> {
     let tx = conn
         .unchecked_transaction()
         .map_err(|e| format!("begin dispatch transaction: {e}"))?;
@@ -51,7 +81,7 @@ pub fn dispatch_plan_for_schedule(
     let built = (|| -> Result<DispatchResult, String> {
         let run = create_task_run_for_schedule(
             &tx,
-            &goal_id,
+            goal_id,
             plan_id,
             schedule_id,
             is_manual,
@@ -172,16 +202,23 @@ mod tests {
         let goal = create_goal(&conn, "g", None).unwrap();
         let json = plan_to_analysis_json(&analysis).unwrap();
         let plan = save_plan(&conn, &goal.id, &json).unwrap();
+        drop(conn);
+
+        let db = Arc::new(Mutex::new(
+            open_db_at(&dir.path().join("t.db")).unwrap(),
+        ));
 
         if crate::services::cli_probe::resolve_engine_binary("codex").is_none() {
             // Structural validate still works; dispatch preflight needs CLI.
+            let conn = db.lock().unwrap();
+            let analysis = parse_plan_json(fixture).unwrap();
             let _ = validate_plan(&conn, analysis).unwrap();
             return;
         }
 
-        let result = dispatch_plan(&conn, &plan.id).unwrap();
+        let result = dispatch_plan(&db, &plan.id).unwrap();
         assert_eq!(result.nodes.len(), 1);
-        let again = dispatch_plan(&conn, &plan.id).unwrap();
+        let again = dispatch_plan(&db, &plan.id).unwrap();
         assert_ne!(result.run.id, again.run.id);
     }
 }
