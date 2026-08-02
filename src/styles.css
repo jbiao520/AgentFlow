@@ -317,7 +317,10 @@
       -webkit-app-region: no-drag;
     }
 
-    .theme-cycle-btn {
+    .theme-menu {
+      position: relative;
+    }
+    .theme-menu-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -333,16 +336,74 @@
       transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease,
                   transform 0.14s ease;
     }
-    .theme-cycle-btn:hover {
+    .theme-menu-btn:hover,
+    .theme-menu.is-open .theme-menu-btn {
       background: var(--bg-card-hover);
       border-color: var(--border-hover);
       color: var(--fg-primary);
     }
-    .theme-cycle-btn:active {
+    .theme-menu-btn:active {
       transform: scale(0.96);
     }
-    .theme-cycle-btn svg {
+    .theme-menu-btn:focus-visible {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18), var(--shadow-sm);
+    }
+    .theme-menu-btn svg {
+      display: none;
+    }
+    .theme-menu-btn[data-theme-current="light"] svg[data-theme-icon="light"],
+    .theme-menu-btn[data-theme-current="dark"] svg[data-theme-icon="dark"],
+    .theme-menu-btn[data-theme-current="system"] svg[data-theme-icon="system"] {
       display: block;
+    }
+    .theme-menu-panel {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      z-index: 80;
+      min-width: 148px;
+      padding: 4px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-color);
+      background: var(--bg-card);
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .theme-menu-panel[hidden] {
+      display: none;
+    }
+    .theme-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 7px 10px;
+      border: none;
+      border-radius: calc(var(--radius-md) - 2px);
+      background: transparent;
+      color: var(--fg-secondary);
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 550;
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.12s ease, color 0.12s ease;
+    }
+    .theme-menu-item:hover {
+      background: rgba(127, 140, 170, 0.1);
+      color: var(--fg-primary);
+    }
+    .theme-menu-item.is-active {
+      background: rgba(79, 70, 229, 0.1);
+      color: var(--accent-primary);
+    }
+    .theme-menu-item svg {
+      flex-shrink: 0;
+      opacity: 0.85;
     }
 
     .theme-segment {
@@ -386,20 +447,6 @@
     .theme-seg svg {
       flex-shrink: 0;
       opacity: 0.85;
-    }
-
-    .sys-status-badge {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      font-family: var(--font-mono);
-      color: var(--fg-secondary);
-      background: var(--bg-card);
-      border: 1px solid var(--border-color);
-      padding: 3px 8px;
-      border-radius: var(--radius-sm);
-      box-shadow: var(--shadow-sm);
     }
 
     .cmd-k-trigger {

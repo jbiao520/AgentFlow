@@ -237,8 +237,56 @@ function sanitizeHtml(dirty: string): string {
   });
 }
 
+/**
+ * CommonMark emphasis flanking fails for CJK punctuation, e.g.
+ * `是**「标题」**混合` leaves literal asterisks. Insert spaces around
+ * `**` / `__` pairs only when opener/closer would otherwise not flank.
+ * Leaves fenced code blocks untouched.
+ */
+function preprocessCjkEmphasis(source: string): string {
+  const parts = source.split(/(```[\s\S]*?```)/g);
+  return parts
+    .map((part) => {
+      if (part.startsWith("```")) return part;
+      return part.replace(
+        /(\*\*|__)([^\n]+?)\1/g,
+        (full, delim: string, inner: string, offset: number, str: string) => {
+          const before = offset > 0 ? str[offset - 1] : "";
+          const afterIdx = offset + full.length;
+          const after = afterIdx < str.length ? str[afterIdx] : "";
+          const first = inner[0];
+          const last = inner[inner.length - 1];
+
+          const openerNeedsSpace =
+            Boolean(before) &&
+            !/\s/.test(before) &&
+            Boolean(first) &&
+            /\p{P}/u.test(first) &&
+            first !== "*" &&
+            first !== "_";
+
+          const closerNeedsSpace =
+            Boolean(after) &&
+            !/\s/.test(after) &&
+            !/\p{P}/u.test(after) &&
+            Boolean(last) &&
+            /\p{P}/u.test(last) &&
+            last !== "*" &&
+            last !== "_";
+
+          if (!openerNeedsSpace && !closerNeedsSpace) return full;
+          return `${openerNeedsSpace ? " " : ""}${delim}${inner}${delim}${
+            closerNeedsSpace ? " " : ""
+          }`;
+        },
+      );
+    })
+    .join("");
+}
+
 export function renderMarkdown(source: string): string {
-  const raw = marked.parse(source || "", { async: false }) as string;
+  const prepared = preprocessCjkEmphasis(source || "");
+  const raw = marked.parse(prepared, { async: false }) as string;
   return `<div class="fmt-md">${sanitizeHtml(raw)}</div>`;
 }
 
@@ -253,12 +301,15 @@ export function renderMarkdownInlineBlock(source: string): string {
     /^[-*+]\s/m.test(text) ||
     /^\d+\.\s/m.test(text) ||
     /```/.test(text) ||
-    /\|.+\|/.test(text)
+    /\|.+\|/.test(text) ||
+    /\*\*[^*\n]+\*\*/.test(text) ||
+    /__[^_\n]+__/.test(text)
   ) {
     return renderMarkdown(text);
   }
   // Short single-line: still allow **bold**, `code`, links
-  const raw = marked.parseInline(text, { async: false }) as string;
+  const prepared = preprocessCjkEmphasis(text);
+  const raw = marked.parseInline(prepared, { async: false }) as string;
   return `<div class="fmt-md fmt-md-inline">${sanitizeHtml(raw)}</div>`;
 }
 
@@ -317,7 +368,11 @@ function looksLikeMarkdown(content: string): boolean {
   for (const re of signals) {
     if (re.test(t)) hits += 1;
   }
-  return hits >= 2;
+  // Research-style .txt reports often only use **bold** / __bold__.
+  const hasEmphasis =
+    /\*\*[^*\n]{1,800}\*\*/.test(t) || /__[^_\n]{1,800}__/.test(t);
+  if (hasEmphasis) hits += 1;
+  return hits >= 2 || hasEmphasis;
 }
 
 /** Parse simple CSV/TSV into a table. Handles quoted fields. */

@@ -8,6 +8,7 @@ const THEME_EVENT = "agentflow-theme-change";
 
 let mediaQuery: MediaQueryList | null = null;
 let mediaHandler: ((event: MediaQueryListEvent) => void) | null = null;
+let menuOpen = false;
 
 function systemPrefersDark(): boolean {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
@@ -69,6 +70,18 @@ function themeLabel(preference: ThemePreference, english: boolean): string {
   return "跟随系统";
 }
 
+function setThemeMenuOpen(open: boolean): void {
+  const menu = document.getElementById("theme-menu");
+  const btn = document.getElementById("theme-menu-btn");
+  const panel = document.getElementById("theme-menu-panel");
+  if (!menu || !btn || !panel) return;
+
+  menuOpen = open;
+  menu.classList.toggle("is-open", open);
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  panel.hidden = !open;
+}
+
 function syncThemeControls(preference: ThemePreference, resolved: ResolvedTheme): void {
   document.querySelectorAll<HTMLElement>("[data-theme-option]").forEach((el) => {
     const value = el.getAttribute("data-theme-option");
@@ -77,17 +90,15 @@ function syncThemeControls(preference: ThemePreference, resolved: ResolvedTheme)
     el.setAttribute("aria-checked", active ? "true" : "false");
   });
 
-  const cycle = document.getElementById("theme-cycle-btn");
-  if (cycle) {
+  const trigger = document.getElementById("theme-menu-btn");
+  if (trigger) {
     const english = document.documentElement.lang === "en";
     const label = themeLabel(preference, english);
-    const tip = english
-      ? `Theme: ${label} (click to switch)`
-      : `主题：${label}（点击切换）`;
-    cycle.setAttribute("data-theme-current", preference);
-    cycle.setAttribute("aria-label", tip);
-    cycle.setAttribute("title", tip);
-    cycle.querySelectorAll("[data-theme-icon]").forEach((icon) => {
+    const tip = english ? `Appearance: ${label}` : `外观主题：${label}`;
+    trigger.setAttribute("data-theme-current", preference);
+    trigger.setAttribute("aria-label", tip);
+    trigger.setAttribute("title", english ? "Appearance theme" : "外观主题");
+    trigger.querySelectorAll("[data-theme-icon]").forEach((icon) => {
       const show = icon.getAttribute("data-theme-icon") === preference;
       (icon as HTMLElement).hidden = !show;
     });
@@ -113,31 +124,49 @@ function bindMediaListener(): void {
   mediaQuery.addEventListener("change", mediaHandler);
 }
 
-function cyclePreference(current: ThemePreference): ThemePreference {
-  if (current === "system") return "light";
-  if (current === "light") return "dark";
-  return "system";
+function bindThemeMenu(): void {
+  const menu = document.getElementById("theme-menu");
+  const btn = document.getElementById("theme-menu-btn");
+  const panel = document.getElementById("theme-menu-panel");
+  if (!menu || !btn || !panel) return;
+
+  btn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setThemeMenuOpen(!menuOpen);
+  });
+
+  panel.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+
+  document.addEventListener("click", () => {
+    if (menuOpen) setThemeMenuOpen(false);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && menuOpen) {
+      setThemeMenuOpen(false);
+      btn.focus();
+    }
+  });
 }
 
 export function initTheme(): void {
   applyTheme(readThemePreference());
   bindMediaListener();
+  bindThemeMenu();
 
   document.querySelectorAll<HTMLElement>("[data-theme-option]").forEach((el) => {
     el.addEventListener("click", () => {
       const value = el.getAttribute("data-theme-option");
       if (value === "light" || value === "dark" || value === "system") {
         setThemePreference(value);
+        if (el.closest("#theme-menu-panel")) {
+          setThemeMenuOpen(false);
+        }
       }
     });
   });
-
-  const cycle = document.getElementById("theme-cycle-btn");
-  if (cycle) {
-    cycle.addEventListener("click", () => {
-      setThemePreference(cyclePreference(readThemePreference()));
-    });
-  }
 
   window.addEventListener("agentflow-language-change", () => {
     syncThemeControls(readThemePreference(), resolveTheme());

@@ -190,9 +190,9 @@ const TRANSLATIONS: Record<string, string> = {
   跟随系统: "System",
   "深色主题采用 Deep Slate，适合终端日志、DAG 与 Diff 预览。":
     "Dark theme uses Deep Slate — ideal for terminal logs, DAG, and Diff previews.",
-  "主题：跟随系统（点击切换）": "Theme: System (click to switch)",
-  "主题：浅色（点击切换）": "Theme: Light (click to switch)",
-  "主题：深色（点击切换）": "Theme: Dark (click to switch)",
+  "外观主题：跟随系统": "Appearance: System",
+  "外观主题：浅色": "Appearance: Light",
+  "外观主题：深色": "Appearance: Dark",
   今日完成调度: "Tasks completed today",
   "尽量写清对象、频率与验收标准": "Include targets, frequency, and acceptance criteria",
   "近 30 天还没有 Agent 被调度。": "No agents were scheduled in the last 30 days.",

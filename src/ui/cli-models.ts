@@ -169,12 +169,51 @@ function isGrokBelow45(modelId: string): boolean {
 }
 
 /**
+ * Gemini major.minor from a model id (optional provider/ prefix).
+ * e.g. google/gemini-3.6-pro → {3,6}, gemini-2.5-flash → {2,5}, gemini-3-pro → {3,0}.
+ */
+function parseGeminiVersion(
+  modelId: string,
+): { major: number; minor: number } | null {
+  const m = modelBasename(modelId)
+    .toLowerCase()
+    .match(/(?:^|-)gemini-(\d+)(?:\.(\d+))?/);
+  if (!m) return null;
+  return {
+    major: Number.parseInt(m[1], 10),
+    minor: m[2] ? Number.parseInt(m[2], 10) : 0,
+  };
+}
+
+/** True if this is a versioned Gemini id strictly below 3.6. */
+function isGeminiBelow36(modelId: string): boolean {
+  const ver = parseGeminiVersion(modelId);
+  if (!ver) return false;
+  if (ver.major < 3) return true;
+  if (ver.major > 3) return false;
+  return ver.minor < 6;
+}
+
+/**
+ * True if this is a DeepSeek model that is not a V4 variant.
+ * Keeps e.g. deepseek/deepseek-v4-flash · deepseek-v4-pro; hides deepseek-chat / reasoner.
+ */
+function isDeepSeekNonV4(modelId: string): boolean {
+  const lower = modelId.toLowerCase();
+  if (!lower.includes("deepseek")) return false;
+  const base = modelBasename(lower);
+  return !/deepseek-v4(?:-|$)/.test(base);
+}
+
+/**
  * Models hidden from the selection UI:
  * 1. Any Claude model
  * 2. GPT-5.4 and all earlier GPT versions
  * 3. Grok below 4.5 (e.g. grok-4.3 / grok-4 / grok-3)
- * 4. OpenCode-hosted free models (id starts with `opencode/`)
- * 5. Raw `-fast` / effort-suffixed catalog ids (folded into supports_fast + effort pills)
+ * 4. Gemini below 3.6 (e.g. gemini-2.5 / gemini-3 / gemini-3.5)
+ * 5. DeepSeek that is not V4 (e.g. deepseek-chat / deepseek-reasoner)
+ * 6. OpenCode-hosted free models (id starts with `opencode/`)
+ * 7. Raw `-fast` / effort-suffixed catalog ids (folded into supports_fast + effort pills)
  */
 export function isSelectableModel(modelId: string): boolean {
   const id = modelId.trim();
@@ -184,6 +223,8 @@ export function isSelectableModel(modelId: string): boolean {
   if (lower.startsWith("opencode/")) return false;
   if (isGptAtOrBefore54(lower)) return false;
   if (isGrokBelow45(lower)) return false;
+  if (isGeminiBelow36(lower)) return false;
+  if (isDeepSeekNonV4(lower)) return false;
   // Fast / effort variants are controlled by toggles/pills, never listed as separate models.
   if (lower.endsWith("-fast") && lower.length > "-fast".length) return false;
   const split = splitCursorModelId(lower);
