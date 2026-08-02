@@ -101,3 +101,17 @@ Plans:
 - Brief: `.planning/BRIEF.md`
 - Spec: `.planning/SPEC.md`
 - Prototype: `ai-agent-platform.html`
+
+## Phase 7: Delivery + Reuse Flywheel (post-v1.0)
+
+**Goal**: 交付结果心智 + 成功→模版→定时飞轮（设计见 `docs/plans/2026-08-02-delivery-and-reuse-flywheel-design.md`）  
+**Depends on**: Phase 6  
+**Plans**: 7
+
+- [x] 07-01 S1 可执行摘要 — [07-01-PLAN.md](phases/07-delivery-reuse-flywheel/07-01-PLAN.md)
+- [x] 07-02 S2 终态交付优先 — [07-02-PLAN.md](phases/07-delivery-reuse-flywheel/07-02-PLAN.md)
+- [x] 07-03 S3 复用条 CTA — [07-03-PLAN.md](phases/07-delivery-reuse-flywheel/07-03-PLAN.md)
+- [x] 07-04 S4 向导成功出口 — [07-04-PLAN.md](phases/07-delivery-reuse-flywheel/07-04-PLAN.md)
+- [x] 07-05 S5 定时快路径 — [07-05-PLAN.md](phases/07-delivery-reuse-flywheel/07-05-PLAN.md)
+- [x] 07-06 S6 总览自动化动态 — [07-06-PLAN.md](phases/07-delivery-reuse-flywheel/07-06-PLAN.md)
+- [x] 07-07 S7 连续失败暂停 — [07-07-PLAN.md](phases/07-delivery-reuse-flywheel/07-07-PLAN.md)

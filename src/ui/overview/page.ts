@@ -10,6 +10,9 @@ import {
   type RecentAgentUsage,
   type UsageBreakdown,
 } from "../../lib/api/overview";
+import { listTaskRuns, type TaskRun } from "../../lib/api/tasks";
+import { listSchedules, type Schedule } from "../../lib/api/schedules";
+import { listTemplates, type Template } from "../../lib/api/templates";
 import { openUsageDetailModal } from "../modals";
 import { updateNavCounts } from "../nav-counts";
 import { selectAgentById, showView } from "../router";
@@ -510,16 +513,130 @@ function renderQueue(items: QueueItem[]): void {
   });
 }
 
+function runStatusShort(status: string): string {
+  if (status === "success") return "成功";
+  if (status === "failed") return "失败";
+  if (status === "cancelled") return "取消";
+  if (status === "running" || status === "queued") return "进行中";
+  return status;
+}
+
+function renderAutomationPulse(
+  deliveries: TaskRun[],
+  schedules: Schedule[],
+  templates: Template[],
+): void {
+  const cap = document.getElementById("overview-automation-caption");
+  const delEl = document.getElementById("overview-recent-deliveries");
+  const schEl = document.getElementById("overview-upcoming-schedules");
+  const tplEl = document.getElementById("overview-recent-templates");
+  if (!delEl || !schEl || !tplEl) return;
+
+  const paused = schedules.filter(
+    (s) =>
+      !s.enabled &&
+      (s.last_error ||
+        (typeof (s as Schedule & { consecutive_failures?: number })
+          .consecutive_failures === "number" &&
+          ((s as Schedule & { consecutive_failures?: number })
+            .consecutive_failures ?? 0) >= 3)),
+  );
+  if (cap) {
+    cap.textContent =
+      paused.length > 0
+        ? `${paused.length} 个定时已暂停`
+        : `交付 ${deliveries.length} · 定时 ${schedules.filter((s) => s.enabled).length} · 模版 ${templates.length}`;
+  }
+
+  const terminal = deliveries.filter((r) =>
+    ["success", "failed", "cancelled"].includes(r.status),
+  );
+  if (terminal.length === 0) {
+    delEl.innerHTML = `<div class="overview-automation-empty">暂无交付记录<br/><button type="button" class="btn btn-secondary btn-sm" data-ov-go="commander">发起调度</button></div>`;
+  } else {
+    delEl.innerHTML = terminal
+      .slice(0, 5)
+      .map((r) => {
+        const title = truncate((r.goal_prompt || "").trim() || r.id, 36);
+        return `<button type="button" class="overview-automation-row" data-ov-run="${escapeHtml(r.id)}">
+          <span class="overview-automation-row-title">${escapeHtml(title)}</span>
+          <span class="overview-automation-row-meta">${escapeHtml(runStatusShort(r.status))} · ${escapeHtml(formatRelative(r.finished_at || r.started_at))}</span>
+        </button>`;
+      })
+      .join("");
+  }
+
+  const upcoming = [...schedules]
+    .filter((s) => s.enabled)
+    .sort((a, b) => a.next_run_at.localeCompare(b.next_run_at))
+    .slice(0, 5);
+  if (upcoming.length === 0) {
+    const errNote =
+      paused.length > 0
+        ? `<div class="overview-automation-empty warn">${paused.length} 个定时因失败已暂停</div>`
+        : "";
+    schEl.innerHTML = `${errNote}<div class="overview-automation-empty">暂无即将运行的定时<br/><button type="button" class="btn btn-secondary btn-sm" data-ov-go="schedules">打开定时</button></div>`;
+  } else {
+    schEl.innerHTML =
+      (paused.length > 0
+        ? `<div class="overview-automation-banner">${paused.length} 个定时已暂停 · 见定时任务页</div>`
+        : "") +
+      upcoming
+        .map(
+          (s) => `<button type="button" class="overview-automation-row" data-ov-go="schedules">
+          <span class="overview-automation-row-title">${escapeHtml(s.name)}</span>
+          <span class="overview-automation-row-meta">下次 ${escapeHtml(formatRelative(s.next_run_at))}${s.last_error ? " · ⚠" : ""}</span>
+        </button>`,
+        )
+        .join("");
+  }
+
+  const recentTpl = [...templates]
+    .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))
+    .slice(0, 5);
+  if (recentTpl.length === 0) {
+    tplEl.innerHTML = `<div class="overview-automation-empty">暂无模版<br/><button type="button" class="btn btn-secondary btn-sm" data-ov-go="templates">打开模版库</button></div>`;
+  } else {
+    tplEl.innerHTML = recentTpl
+      .map(
+        (t) => `<button type="button" class="overview-automation-row" data-ov-go="templates">
+        <span class="overview-automation-row-title">${escapeHtml(t.name)}</span>
+        <span class="overview-automation-row-meta">${escapeHtml(formatRelative(t.updated_at))}</span>
+      </button>`,
+      )
+      .join("");
+  }
+
+  const root = document.getElementById("overview-automation-pulse");
+  root?.querySelectorAll("[data-ov-run]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const id = (el as HTMLElement).getAttribute("data-ov-run");
+      if (id) void openTaskRun(id);
+    });
+  });
+  root?.querySelectorAll("[data-ov-go]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const v = (el as HTMLElement).getAttribute("data-ov-go");
+      if (v) showView(v as "commander" | "schedules" | "templates" | "tasks");
+    });
+  });
+}
+
 export async function refreshOverview(): Promise<void> {
   try {
-    const [stats, recent, queue] = await Promise.all([
-      getOverviewStats(),
-      listRecentAgents(),
-      listRunningQueue(),
-    ]);
+    const [stats, recent, queue, runs, schedules, templates] =
+      await Promise.all([
+        getOverviewStats(),
+        listRecentAgents(),
+        listRunningQueue(),
+        listTaskRuns(30).catch(() => [] as TaskRun[]),
+        listSchedules().catch(() => [] as Schedule[]),
+        listTemplates().catch(() => [] as Template[]),
+      ]);
     renderStats(stats);
     renderRecentAgents(recent);
     renderQueue(queue);
+    renderAutomationPulse(runs, schedules, templates);
     updateNavCounts(stats.agent_count, stats.running_tasks);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

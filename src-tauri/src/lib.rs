@@ -37,6 +37,40 @@ use services::recovery::interrupt_orphaned_runs;
 use services::scheduler::start_scheduler;
 use state::{DbState, RunState, SandboxState};
 use tauri::Manager;
+use tauri_plugin_opener::OpenerExt;
+
+/// Whether the webview may navigate to this URL (app shell / Vite dev only).
+/// External pages would replace the entire SPA with no back button.
+fn is_app_navigation(url: &tauri::Url) -> bool {
+    match url.scheme() {
+        "tauri" | "asset" | "ipc" | "data" | "blob" | "about" => true,
+        "http" | "https" => matches!(
+            url.host_str(),
+            Some("localhost") | Some("127.0.0.1") | Some("tauri.localhost") | Some("[::1]")
+        ),
+        _ => false,
+    }
+}
+
+/// Blocks external navigations and opens them in the system browser instead.
+fn nav_guard_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("nav-guard")
+        .on_navigation(|webview, url| {
+            if is_app_navigation(url) {
+                return true;
+            }
+            let href = url.as_str();
+            if let Err(e) = webview
+                .app_handle()
+                .opener()
+                .open_url(href, None::<&str>)
+            {
+                eprintln!("[AgentFlow] open external URL failed ({href}): {e}");
+            }
+            false
+        })
+        .build()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -57,6 +91,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        // Defense-in-depth: never let the main webview leave the app origin.
+        // Frontend also intercepts <a> clicks; this catches location.assign etc.
+        .plugin(nav_guard_plugin())
         .manage(SandboxState::new())
         .manage(db_state)
         .manage(run_state)

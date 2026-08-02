@@ -148,7 +148,8 @@ CREATE TABLE IF NOT EXISTS schedules (
   overlap_policy TEXT NOT NULL DEFAULT 'queue',
   max_retries INTEGER NOT NULL DEFAULT 0,
   retry_delay_secs INTEGER NOT NULL DEFAULT 300,
-  retry_attempt INTEGER NOT NULL DEFAULT 0
+  retry_attempt INTEGER NOT NULL DEFAULT 0,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_schedules_due

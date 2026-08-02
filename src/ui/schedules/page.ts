@@ -161,9 +161,22 @@ function renderList(): void {
       const tmpl = state.templates.find((t) => t.id === s.template_id);
       const active =
         !state.editingNew && s.id === state.selectedId ? " active" : "";
-      const statusClass = s.enabled ? "sched-status-on" : "sched-status-off";
-      const status = s.enabled ? "启用" : "暂停";
+      const fails = s.consecutive_failures ?? 0;
+      const autoPaused =
+        !s.enabled && (fails >= 3 || (s.last_error || "").includes("已自动暂停"));
+      const statusClass = s.enabled
+        ? "sched-status-on"
+        : autoPaused
+          ? "sched-status-off sched-status-error"
+          : "sched-status-off";
+      const status = s.enabled ? "启用" : autoPaused ? "已自动暂停" : "暂停";
       const next = formatLocalWhen(s.next_run_at);
+      const errLine =
+        s.last_error
+          ? `<div class="sched-list-card-error">${escapeHtml(s.last_error.slice(0, 80))}</div>`
+          : fails > 0
+            ? `<div class="sched-list-card-error">连续失败 ${fails} 次</div>`
+            : "";
       return `<div class="sched-list-card${active}" data-schedule-id="${escapeHtml(s.id)}" role="button" tabindex="0">
         <div class="sched-list-card-top">
           <div class="sched-list-card-name">${escapeHtml(s.name)}</div>
@@ -174,6 +187,7 @@ function renderList(): void {
           <span class="sched-chip">${escapeHtml(modeLabel(s))}</span>
         </div>
         <div class="sched-list-card-next">下次 ${escapeHtml(next)}</div>
+        ${errLine}
       </div>`;
     })
     .join("");

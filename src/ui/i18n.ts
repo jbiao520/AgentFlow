@@ -109,6 +109,8 @@ const TRANSLATIONS: Record<string, string> = {
   调度流程: "Pipeline",
   调度中枢: "Dispatch",
   "调用 Skill": "Invoke skill",
+  定时: "Scheduled",
+  "定时·手动": "Schedule · manual",
   定时调度: "Schedules",
   定时任务: "Schedules",
   定时任务已保存: "Schedule saved",
@@ -279,6 +281,11 @@ const TRANSLATIONS: Record<string, string> = {
   请先选择一个任务: "Select a task first",
   请先选择有产物路径的节点: "Select a node with an artifact path first",
   请先在模版库创建模版: "Create a template in Templates first",
+  "请先保存为模版，保存成功后可直接设为定时":
+    "Save as a template first — then you can set a schedule",
+  请先保存为模版以便带变量再跑: "Save as a template first to rerun with variables",
+  请在模版库填写变量后执行: "Fill in variables in Templates, then run",
+  定时触发的任务无需再保存模版: "Schedule-triggered runs do not need to be saved as templates",
   请选择模版: "Select a template",
   请选择执行时间: "Select a run time",
   取消: "Cancel",
@@ -294,6 +301,23 @@ const TRANSLATIONS: Record<string, string> = {
   确认: "Confirm",
   "确认 Workspace 路径存在且可读，或重新选择本地目录。": "Confirm the workspace path exists and is readable, or pick another local folder.",
   确认并保存模版: "Confirm and save template",
+  设为定时: "Set schedule",
+  再跑一次: "Run again",
+  打开模版: "Open template",
+  查看模版库: "View templates",
+  已完成交付: "Delivery complete",
+  部分完成: "Partially complete",
+  未完成: "Incomplete",
+  "这次跑通了。保存为模版后，下次只填变量即可复用；也可以设为定时自动跑。":
+    "This run succeeded. Save as a template to reuse with variables, or set a schedule to run automatically.",
+  "这次跑通了。保存为模版后可复用，也可设为定时。":
+    "This run succeeded. Save as a template to reuse, or set a schedule.",
+  "部分节点已成功。可保存为模版（结构含失败路径），建议先重试失败节点。":
+    "Some nodes succeeded. You can save as a template (structure includes failed paths); retry failed nodes first.",
+  "下次只需填写变量即可复用。可设为定时自动跑，或立即执行一次。":
+    "Next time, just fill in the variables. Set a schedule, or run once now.",
+  选择任务后显示交付结论: "Select a task to see the delivery summary",
+  已再次启动: "Started again",
   确认并分发: "Confirm and dispatch",
   "确认并分发当前 Plan": "Confirm and dispatch this plan",
   确认并分发任务: "Confirm and dispatch",
@@ -598,6 +622,26 @@ function translateText(source: string, language: AppLanguage): string {
     return `${leading}${exact}${trailing}`;
   }
 
+  // Full-sentence patterns with dynamic segments — apply before partial phrase
+  // replacement so short CTAs like「设为定时」do not mangle whole copy.
+  const patterned = source
+    .replace(
+      /^已保存为「(.+)」。可设为定时自动跑，或用同一模版再跑一次。$/,
+      'Saved as "$1". Set a schedule, or run again with the same template.',
+    )
+    .replace(/^✓ 已保存「(.+)」$/, '✓ Saved "$1"')
+    .replace(
+      /^节点 (\d+)\/(\d+) 成功( · .+)?$/,
+      (_m, a: string, b: string, rest: string | undefined) =>
+        `Nodes ${a}/${b} succeeded${rest ?? ""}`,
+    );
+  if (patterned !== source) {
+    // Continue partial/regex pass on any remaining Chinese in the tail (e.g. meta join).
+    source = patterned;
+    const again = TRANSLATIONS[source.trim()];
+    if (again) return again;
+  }
+
   let result = source;
   Object.entries(TRANSLATIONS)
     // Short labels (任务/调度/概览…) are nav exact-matches only — avoid mangling longer copy.
@@ -696,7 +740,16 @@ function translateText(source: string, language: AppLanguage): string {
     .replace(/^已完成$/, "Completed")
     .replace(/^失败$/, "Failed")
     .replace(/^启用$/, "Enabled")
-    .replace(/^暂停$/, "Paused");
+    .replace(/^暂停$/, "Paused")
+    .replace(/节点 (\d+)\/(\d+) 成功/g, "Nodes $1/$2 succeeded")
+    .replace(/(\d+) 失败/g, "$1 failed")
+    .replace(/(\d+) 跳过/g, "$1 skipped")
+    .replace(/耗时 /g, "Duration ")
+    .replace(/ · 定时·手动/g, " · Schedule · manual")
+    .replace(/ · 定时/g, " · Scheduled")
+    .replace(/ · 手动/g, " · Manual")
+    .replace(/^再跑失败: /, "Rerun failed: ")
+    .replace(/ 定时$/, " schedule");
   return result;
 }
 

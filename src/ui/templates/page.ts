@@ -89,7 +89,9 @@ function sourceLabel(t: Template): string {
   return "手动";
 }
 
-export async function refreshTemplateLibrary(): Promise<void> {
+export async function refreshTemplateLibrary(
+  preferId?: string,
+): Promise<void> {
   const generation = ++templateRefreshGeneration;
   try {
     const templates = await listTemplates();
@@ -105,8 +107,9 @@ export async function refreshTemplateLibrary(): Promise<void> {
   }
   updateTemplateNavCount(state.templates.length);
   renderList();
-  if (state.selectedId) {
-    const still = state.templates.find((t) => t.id === state.selectedId);
+  const pick = preferId || state.selectedId;
+  if (pick) {
+    const still = state.templates.find((t) => t.id === pick);
     if (still) await selectTemplate(still.id);
     else {
       state.selectedId = null;
@@ -116,6 +119,12 @@ export async function refreshTemplateLibrary(): Promise<void> {
   } else {
     renderDetail();
   }
+}
+
+/** Navigate to Templates and select a specific template. */
+export async function openTemplate(id: string): Promise<void> {
+  showView("templates");
+  await refreshTemplateLibrary(id);
 }
 
 function renderList(): void {

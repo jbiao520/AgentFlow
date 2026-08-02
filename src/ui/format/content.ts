@@ -92,6 +92,7 @@ marked.setOptions({
 });
 
 // Highlight fenced code blocks inside Markdown.
+// Links open externally (target=_blank) so the app webview never navigates away.
 marked.use({
   renderer: {
     code({ text, lang }: { text: string; lang?: string }) {
@@ -105,6 +106,17 @@ marked.use({
         ? `hljs language-${escapeHtml(valid)}`
         : "hljs";
       return `<pre class="fmt-code"><code class="${cls}">${highlighted}</code></pre>\n`;
+    },
+    link({ href, title, tokens }: { href: string; title?: string | null; tokens: unknown[] }) {
+      // marked injects `this.parser` on the renderer at call time.
+      const self = this as unknown as {
+        parser?: { parseInline: (t: unknown[]) => string };
+      };
+      const text = self.parser?.parseInline(tokens) ?? "";
+      if (!href) return text;
+      const safeHref = escapeHtml(href);
+      const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+      return `<a href="${safeHref}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
     },
   },
 });

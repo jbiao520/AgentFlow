@@ -31,12 +31,17 @@ import {
   renderLogHistory,
   renderLogTabs,
 } from "./logs";
-import { showToast } from "../toast";
+import { confirmNear, showToast } from "../toast";
 import { confirmAction } from "../modals";
 import {
   renderMarkdownInlineBlock,
   setFormattedContent,
 } from "../format/content";
+import {
+  listTemplates,
+  parseTemplateVariables,
+  type Template,
+} from "../../lib/api/templates";
 
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -68,6 +73,8 @@ type CenterState = {
   deletedRunIds: Set<string>;
   /** Monotonic generation used to ignore stale history list responses. */
   historyRefreshGeneration: number;
+  /** Monotonic generation used to ignore stale selectRun detail loads. */
+  selectionGeneration: number;
   historyBound: boolean;
   unsubs: UnlistenFn[];
 };
@@ -94,6 +101,7 @@ const state: CenterState = {
   cancelling: false,
   deletedRunIds: new Set(),
   historyRefreshGeneration: 0,
+  selectionGeneration: 0,
   historyBound: false,
   unsubs: [],
 };
@@ -404,7 +412,347 @@ function closeArtifactExpand(): void {
   document.body.classList.remove("artifact-expand-open");
 }
 
+function isTerminalStatus(status: string | undefined): boolean {
+  return status === "success" || status === "failed" || status === "cancelled";
+}
+
+function formatElapsed(
+  started: string | null | undefined,
+  finished: string | null | undefined,
+): string {
+  if (!started) return "—";
+  const a = Date.parse(started.endsWith("Z") || started.includes("+") ? started : `${started}Z`);
+  const b = finished
+    ? Date.parse(finished.endsWith("Z") || finished.includes("+") ? finished : `${finished}Z`)
+    : Date.now();
+  if (Number.isNaN(a) || Number.isNaN(b)) return "—";
+  const secs = Math.max(0, Math.round((b - a) / 1000));
+  if (secs < 60) return `${secs}s`;
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  if (m < 60) return `${m}m ${s}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+function runSourceLabel(run: TaskRun): string {
+  if (run.schedule_id) return run.is_manual ? "定时·手动" : "定时";
+  return "手动";
+}
+
+/** Runs created by a schedule already have a template + schedule — no flywheel CTAs. */
+function isScheduleTriggered(run: TaskRun): boolean {
+  return Boolean(run.schedule_id);
+}
+
+function nodeStats(nodes: TaskNode[]): { ok: number; failed: number; skipped: number; total: number } {
+  const total = nodes.length;
+  let ok = 0;
+  let failed = 0;
+  let skipped = 0;
+  for (const n of nodes) {
+    if (n.status === "success") ok += 1;
+    else if (n.status === "failed") failed += 1;
+    else if (n.status === "skipped") skipped += 1;
+  }
+  return { ok, failed, skipped, total };
+}
+
+function applyTerminalLayout(run: TaskRun | null): void {
+  const col = document.getElementById("task-detail-column");
+  const dagBody = document.getElementById("task-dag-container");
+  const dagToggle = document.getElementById(
+    "btn-toggle-dag-section",
+  ) as HTMLButtonElement | null;
+  const logTerm = document.getElementById("task-log-terminal");
+  const details = document.getElementById("task-delivery-details");
+  const foldBtn = document.getElementById(
+    "btn-toggle-delivery-details",
+  ) as HTMLButtonElement | null;
+  const terminal = isTerminalStatus(run?.status);
+  col?.classList.toggle("task-detail-terminal", terminal);
+  logTerm?.classList.toggle("task-log-collapsed", terminal);
+
+  if (terminal) {
+    if (details) details.hidden = false;
+    if (foldBtn) {
+      foldBtn.setAttribute("aria-expanded", "true");
+      foldBtn.textContent = "详情 ▴";
+    }
+    // Collapse DAG body by default on terminal (user can expand).
+    if (dagBody && !dagBody.dataset.userExpanded) {
+      dagBody.hidden = true;
+      if (dagToggle) {
+        dagToggle.setAttribute("aria-expanded", "false");
+        dagToggle.textContent = "展开 ▾";
+      }
+    }
+  } else {
+    if (dagBody) {
+      dagBody.hidden = false;
+      delete dagBody.dataset.userExpanded;
+    }
+    if (dagToggle) {
+      dagToggle.setAttribute("aria-expanded", "true");
+      dagToggle.textContent = "折叠 ▴";
+    }
+  }
+}
+
+function renderConclusionBar(run: TaskRun | null, nodes: TaskNode[]): void {
+  const card = document.getElementById("task-delivery-conclusion");
+  const pill = document.getElementById("task-conclusion-pill");
+  const summaryEl = document.getElementById("task-conclusion-summary");
+  const metaEl = document.getElementById("task-conclusion-meta");
+  if (!card || !pill || !summaryEl || !metaEl) return;
+
+  if (!run || !isTerminalStatus(run.status)) {
+    card.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  const stats = nodeStats(nodes);
+  const partial = isPartialRun(run, nodes);
+
+  let label = "已完成交付";
+  let pillClass = "task-conclusion-pill is-success";
+  if (run.status === "cancelled") {
+    label = "已取消";
+    pillClass = "task-conclusion-pill is-cancelled";
+  } else if (partial) {
+    label = "部分完成";
+    pillClass = "task-conclusion-pill is-partial";
+  } else if (run.status === "failed") {
+    label = "未完成";
+    pillClass = "task-conclusion-pill is-failed";
+  }
+
+  const report = parseDeliveryReport(run);
+  const oneLiner =
+    (report?.summary && sanitizeDeliveryText(report.summary).split("\n")[0]) ||
+    (run.goal_prompt || "").trim() ||
+    "任务已结束";
+
+  pill.className = pillClass;
+  pill.textContent = label;
+  summaryEl.textContent =
+    oneLiner.length > 160 ? `${oneLiner.slice(0, 159)}…` : oneLiner;
+  // Keep Chinese source strings; i18n observer translates for en.
+  metaEl.textContent = [
+    `节点 ${stats.ok}/${stats.total} 成功`,
+    stats.failed ? `${stats.failed} 失败` : null,
+    stats.skipped ? `${stats.skipped} 跳过` : null,
+    `耗时 ${formatElapsed(run.started_at, run.finished_at)}`,
+    runSourceLabel(run),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+async function findTemplateForRun(runId: string): Promise<Template | null> {
+  try {
+    const list = await listTemplates();
+    const matches = list.filter((t) => t.source_run_id === runId);
+    if (matches.length === 0) return null;
+    matches.sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
+    return matches[0];
+  } catch {
+    return null;
+  }
+}
+
+/** ≥1 success and ≥1 failed|skipped → partial (design Part A conclusion). */
+function isPartialRun(_run: TaskRun, nodes: TaskNode[]): boolean {
+  const stats = nodeStats(nodes);
+  return stats.ok > 0 && stats.failed + stats.skipped > 0;
+}
+
+function selectFailedNode(nodes: TaskNode[]): TaskNode | null {
+  return nodes.find((n) => n.status === "failed") || null;
+}
+
+function retryFailedNode(nodes: TaskNode[]): void {
+  const failed = selectFailedNode(nodes);
+  if (!failed) {
+    showToast("没有失败节点可重试", { kind: "info" });
+    return;
+  }
+  state.selectedNodeId = failed.id;
+  renderDagPanel();
+  void onRetry();
+}
+
+function syncSaveTemplateButton(run: TaskRun | null): void {
+  const btn = document.getElementById(
+    "btn-save-run-template",
+  ) as HTMLButtonElement | null;
+  if (!btn) return;
+  // Schedule-triggered runs already come from a template; hide save CTA.
+  const hide = !!run && isScheduleTriggered(run);
+  btn.hidden = hide;
+  btn.style.display = hide ? "none" : "";
+}
+
+async function renderReuseBar(run: TaskRun | null, nodes: TaskNode[]): Promise<void> {
+  const bar = document.getElementById("run-reuse-bar");
+  const copy = document.getElementById("run-reuse-copy");
+  const actions = document.getElementById("run-reuse-actions");
+  if (!bar || !copy || !actions) return;
+
+  syncSaveTemplateButton(run);
+
+  if (!run || !isTerminalStatus(run.status)) {
+    bar.hidden = true;
+    return;
+  }
+
+  // Already scheduled — do not push "save template" / "set schedule" again.
+  if (isScheduleTriggered(run)) {
+    bar.hidden = true;
+    return;
+  }
+
+  const partial = isPartialRun(run, nodes);
+  const stats = nodeStats(nodes);
+  const failedOnly = run.status === "failed" && stats.ok === 0;
+  const cancelled = run.status === "cancelled";
+
+  bar.hidden = false;
+  const linked = await findTemplateForRun(run.id);
+  // Race: user may have switched run
+  if (state.selectedRunId !== run.id) return;
+
+  actions.innerHTML = "";
+  const addBtn = (
+    label: string,
+    kind: "primary" | "secondary",
+    onClick: () => void,
+  ) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `btn btn-${kind} btn-sm`;
+    b.textContent = label;
+    b.addEventListener("click", onClick);
+    actions.appendChild(b);
+  };
+
+  if (failedOnly || cancelled) {
+    copy.textContent = cancelled
+      ? "任务已取消。可重试失败节点，或回到调度重新编排。"
+      : "任务未完成。可重试失败节点，或回到调度重新编排。";
+    if (selectFailedNode(nodes)) {
+      addBtn("重试失败节点", "primary", () => retryFailedNode(nodes));
+    }
+    addBtn("重新编排", "secondary", () => showView("commander"));
+    return;
+  }
+
+  if (partial) {
+    const hasFailed = stats.failed > 0;
+    copy.textContent = hasFailed
+      ? "部分完成，请查看失败节点。可保存为模版，但不建议直接设为定时。"
+      : "部分节点被跳过。可保存为模版，建议确认跳过原因后再复用。";
+    if (hasFailed) {
+      addBtn("重试失败节点", "primary", () => retryFailedNode(nodes));
+    }
+    addBtn("保存为模版", "secondary", () => openSaveForRun(run));
+    return;
+  }
+
+  if (linked) {
+    copy.textContent = `已保存为「${linked.name}」。可设为定时自动跑，或用同一模版再跑一次。`;
+    addBtn("设为定时", "primary", () => {
+      void openScheduleForTemplate(linked);
+    });
+    addBtn("再跑一次", "secondary", () => {
+      void rerunTemplate(linked);
+    });
+    addBtn("打开模版", "secondary", () => {
+      void import("../templates/page").then((m) => m.openTemplate(linked.id));
+    });
+    return;
+  }
+
+  copy.textContent =
+    "这次跑通了。保存为模版后，下次只填变量即可复用；也可以设为定时自动跑。";
+  addBtn("保存为模版", "primary", () => openSaveForRun(run));
+  addBtn("设为定时", "secondary", () => {
+    showToast("请先保存为模版，保存成功后可直接设为定时", { kind: "info" });
+    openSaveForRun(run);
+  });
+  addBtn("再跑一次", "secondary", () => {
+    showToast("请先保存为模版以便带变量再跑", { kind: "info" });
+    openSaveForRun(run);
+  });
+}
+
+function openSaveForRun(run: TaskRun): void {
+  void import("../templates/save-wizard").then((m) =>
+    m.openSaveTemplateWizard({
+      runId: run.id,
+      goalId: run.goal_id,
+      planId: run.plan_id,
+    }),
+  );
+}
+
+async function openScheduleForTemplate(t: Template): Promise<void> {
+  const vars = parseTemplateVariables(t.variables_json);
+  const values: Record<string, string> = {};
+  for (const v of vars) {
+    if (v.default) values[v.key] = v.default;
+  }
+  const m = await import("../schedules/create-modal");
+  await m.openCreateScheduleModal({
+    templateId: t.id,
+    name: `${t.name} 定时`,
+    values,
+  });
+}
+
+async function rerunTemplate(t: Template): Promise<void> {
+  const vars = parseTemplateVariables(t.variables_json);
+  const values: Record<string, string> = {};
+  let missing = false;
+  for (const v of vars) {
+    if (v.default) values[v.key] = v.default;
+    else if (v.required) missing = true;
+  }
+  if (missing || vars.length > 0) {
+    showView("templates");
+    showToast("请在模版库填写变量后执行", { kind: "info" });
+    return;
+  }
+  try {
+    const { instantiateTemplate } = await import("../../lib/api/templates");
+    const result = await instantiateTemplate({
+      templateId: t.id,
+      values,
+      dispatch: true,
+    });
+    const runId =
+      result.started?.run_id || result.dispatch?.run.id || null;
+    if (runId) {
+      showToast("已再次启动", { kind: "success" });
+      await openTaskRun(runId);
+    } else {
+      showToast(result.orchestrate.error || "启动失败", { kind: "error" });
+    }
+  } catch (e) {
+    showToast(`再跑失败: ${e instanceof Error ? e.message : String(e)}`, {
+      kind: "error",
+    });
+  }
+}
+
+function refreshDeliveryChrome(run: TaskRun | null): void {
+  applyTerminalLayout(run);
+  renderConclusionBar(run, state.nodes);
+  void renderReuseBar(run, state.nodes);
+}
+
 function renderDeliveryReport(run: TaskRun | null): void {
+  refreshDeliveryChrome(run);
+
   const summary = document.getElementById("task-delivery-summary");
   const status = document.getElementById("task-delivery-status");
   const files = document.getElementById("task-delivery-files");
@@ -637,6 +985,8 @@ function clearArtifactPanel(message: string): void {
 }
 
 async function selectArtifactPath(relPath: string): Promise<void> {
+  const runId = state.selectedRunId;
+  const agentId = state.artifactAgentId;
   state.selectedArtifactPath = relPath;
   state.artifactContent = "";
   state.artifactMissing = false;
@@ -654,7 +1004,7 @@ async function selectArtifactPath(relPath: string): Promise<void> {
   }
   renderArtifactList();
 
-  if (!state.artifactAgentId) {
+  if (!agentId) {
     state.artifactMissing = true;
     if (box) {
       box.innerHTML = `<div class="fmt-empty">无法读取产物: 节点未绑定 Agent</div>`;
@@ -663,12 +1013,17 @@ async function selectArtifactPath(relPath: string): Promise<void> {
     return;
   }
 
+  const stillCurrent = (): boolean =>
+    state.selectedRunId === runId && state.selectedArtifactPath === relPath;
+
   try {
-    const file = await readWorkspaceFile(state.artifactAgentId, relPath);
+    const file = await readWorkspaceFile(agentId, relPath);
+    if (!stillCurrent()) return;
     state.artifactContent = file.content;
     state.artifactMissing = false;
     setFormattedContent(box, file.content, relPath);
   } catch (e) {
+    if (!stillCurrent()) return;
     const msg = e instanceof Error ? e.message : String(e);
     state.artifactContent = "";
     state.artifactMissing = true;
@@ -680,10 +1035,12 @@ async function selectArtifactPath(relPath: string): Promise<void> {
       )}</div>`;
     }
   }
+  if (!stillCurrent()) return;
   renderArtifactList();
 }
 
 async function loadArtifactForNode(nodeId: string): Promise<void> {
+  const runId = state.selectedRunId;
   const node = state.nodes.find((n) => n.id === nodeId);
   if (!node) {
     clearArtifactPanel("选择 DAG 节点查看产物");
@@ -697,6 +1054,7 @@ async function loadArtifactForNode(nodeId: string): Promise<void> {
   state.artifactMissing = false;
 
   if (!paths.length) {
+    if (state.selectedRunId !== runId || state.selectedNodeId !== nodeId) return;
     clearArtifactPanel("该节点暂无产物路径");
     state.artifactAgentId = node.agent_id;
     return;
@@ -855,7 +1213,7 @@ function bindHistoryListOnce(list: HTMLElement): void {
         ev.preventDefault();
         ev.stopPropagation();
         const id = deleteBtn.getAttribute("data-delete-run");
-        if (id) void onDeleteRun(id);
+        if (id) void onDeleteRun(id, deleteBtn);
         return;
       }
 
@@ -889,6 +1247,13 @@ async function selectRun(
     expectedRefreshGeneration === state.historyRefreshGeneration;
 
   if (!isCurrentRefresh()) return;
+
+  const selectionToken = ++state.selectionGeneration;
+  const isCurrentSelection = (): boolean =>
+    isCurrentRefresh() &&
+    state.selectionGeneration === selectionToken &&
+    state.selectedRunId === runId;
+
   const runChanged = state.selectedRunId !== runId;
   state.selectedRunId = runId;
   state.logFilter = "all";
@@ -910,7 +1275,7 @@ async function selectRun(
   syncCancelButton();
   try {
     const full = await getTaskRun(runId);
-    if (!isCurrentRefresh()) return;
+    if (!isCurrentSelection()) return;
     if (!full) {
       showToast("Run 不存在");
       return;
@@ -919,8 +1284,8 @@ async function selectRun(
     if (runIndex >= 0) state.runs[runIndex] = full.run;
     else state.runs.unshift(full.run);
     renderHistory();
-    renderDeliveryReport(full.run);
     state.nodes = full.nodes;
+    renderDeliveryReport(full.run);
     const failed = full.nodes.find((n) => n.status === "failed");
     const running = full.nodes.find((n) => n.status === "running");
     state.selectedNodeId =
@@ -928,7 +1293,7 @@ async function selectRun(
     renderDagPanel();
 
     const logs = await listTaskLogs(runId);
-    if (!isCurrentRefresh()) return;
+    if (!isCurrentSelection()) return;
     const agents = [
       ...new Set(
         logs
@@ -952,6 +1317,7 @@ async function selectRun(
       clearArtifactPanel("选择 DAG 节点查看产物");
     }
   } catch (e) {
+    if (!isCurrentSelection()) return;
     showToast(`加载 Run 失败: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
@@ -984,6 +1350,7 @@ export async function refreshTaskHistory(preferRunId?: string): Promise<void> {
 }
 
 function clearRunDetail(): void {
+  state.selectionGeneration += 1;
   state.selectedRunId = null;
   state.nodes = [];
   state.selectedNodeId = null;
@@ -996,11 +1363,35 @@ function clearRunDetail(): void {
   syncCancelButton();
 }
 
-async function onDeleteRun(runId: string): Promise<void> {
+function isActiveRunStatus(status: string | undefined): boolean {
+  return status === "running" || status === "queued";
+}
+
+async function onDeleteRun(
+  runId: string,
+  anchor?: HTMLElement,
+): Promise<void> {
   if (state.deletedRunIds.has(runId)) return;
 
   const run = state.runs.find((r) => r.id === runId);
   const label = runDisplayName(run, runId);
+  const active = isActiveRunStatus(run?.status);
+  const confirmed = anchor
+    ? await confirmNear(anchor, {
+        message: active ? "仍在执行，终止并删除？" : "确认删除？",
+        confirmLabel: active ? "终止并删除" : "删除",
+      })
+    : await confirmAction(
+        active
+          ? `任务「${label}」仍在执行中。删除会终止执行并移除记录，确定继续？`
+          : `确认删除任务「${label}」？此操作不可撤销。`,
+        {
+          title: active ? "删除执行中的任务" : "删除任务",
+          confirmLabel: active ? "终止并删除" : "删除",
+        },
+      );
+  if (!confirmed) return;
+
   try {
     const refreshGenerationAtDelete = state.historyRefreshGeneration;
     state.deletedRunIds.add(runId);
@@ -1028,11 +1419,33 @@ async function onDeleteRun(runId: string): Promise<void> {
   }
 }
 
-async function onClearHistory(): Promise<void> {
+async function onClearHistory(anchor?: HTMLElement): Promise<void> {
   if (state.runs.length === 0) {
     showToast("暂无执行历史");
     return;
   }
+  const activeCount = state.runs.filter((r) =>
+    isActiveRunStatus(r.status),
+  ).length;
+  const confirmed = anchor
+    ? await confirmNear(anchor, {
+        message:
+          activeCount > 0
+            ? `清空 ${state.runs.length} 条（含 ${activeCount} 条执行中）？`
+            : `清空全部 ${state.runs.length} 条历史？`,
+        confirmLabel: activeCount > 0 ? "终止并清空" : "清空",
+      })
+    : await confirmAction(
+        activeCount > 0
+          ? `将清空全部 ${state.runs.length} 条历史，其中 ${activeCount} 条仍在执行并将被终止。确定继续？`
+          : `确认清空全部 ${state.runs.length} 条执行历史？此操作不可撤销。`,
+        {
+          title: "清空执行历史",
+          confirmLabel: activeCount > 0 ? "终止并清空" : "清空",
+        },
+      );
+  if (!confirmed) return;
+
   let refreshGenerationAtClear: number | null = null;
   try {
     refreshGenerationAtClear = state.historyRefreshGeneration;
@@ -1191,8 +1604,8 @@ async function subscribeEvents(): Promise<void> {
     }
     renderHistory();
     if (run.id === state.selectedRunId) {
-      renderDeliveryReport(run);
       state.nodes = ev.payload.nodes;
+      renderDeliveryReport(run);
       renderDagPanel();
       if (state.selectedNodeId) {
         void loadArtifactForNode(state.selectedNodeId);
@@ -1206,6 +1619,22 @@ async function subscribeEvents(): Promise<void> {
 export function initTaskCenter(): void {
   void refreshTaskHistory();
   void subscribeEvents();
+
+  document
+    .getElementById("btn-toggle-dag-section")
+    ?.addEventListener("click", () => {
+      const dagBody = document.getElementById("task-dag-container");
+      const btn = document.getElementById(
+        "btn-toggle-dag-section",
+      ) as HTMLButtonElement | null;
+      if (!dagBody || !btn) return;
+      const open = dagBody.hidden;
+      dagBody.hidden = !open;
+      if (open) dagBody.dataset.userExpanded = "1";
+      else delete dagBody.dataset.userExpanded;
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      btn.textContent = open ? "折叠 ▴" : "展开 ▾";
+    });
 
   document.getElementById("btn-retry-node")?.addEventListener("click", () => {
     void onRetry();
@@ -1228,6 +1657,10 @@ export function initTaskCenter(): void {
         showToast("未找到选中任务", { kind: "error" });
         return;
       }
+      if (isScheduleTriggered(run)) {
+        showToast("定时触发的任务无需再保存模版", { kind: "info" });
+        return;
+      }
       void import("../templates/save-wizard").then((m) =>
         m.openSaveTemplateWizard({
           runId: run.id,
@@ -1238,8 +1671,9 @@ export function initTaskCenter(): void {
     });
   document
     .getElementById("btn-clear-task-history")
-    ?.addEventListener("click", () => {
-      void onClearHistory();
+    ?.addEventListener("click", (ev) => {
+      const btn = ev.currentTarget;
+      void onClearHistory(btn instanceof HTMLElement ? btn : undefined);
     });
   document.getElementById("clear-logs-btn")?.addEventListener("click", () => {
     clearLogBody();

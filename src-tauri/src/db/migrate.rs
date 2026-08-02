@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 
 const SCHEMA_SQL: &str = include_str!("schema.sql");
-const SCHEMA_VERSION: i32 = 8;
+const SCHEMA_VERSION: i32 = 9;
 
 /// Idempotent schema migration to current version. Seeds orchestrator_settings id=1 if missing.
 pub fn migrate(conn: &Connection) -> Result<(), String> {
@@ -29,6 +29,7 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
         migrate_v6_schedules(conn, current)?;
         migrate_v7_task_run_manual(conn, current)?;
         migrate_v8_orchestrator_use_fast(conn, current)?;
+        migrate_v9_schedule_consecutive_failures(conn, current)?;
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations(version) VALUES (?1)",
             [SCHEMA_VERSION],
@@ -37,6 +38,24 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
     }
 
     seed_orchestrator_settings(conn)?;
+    Ok(())
+}
+
+/// v9: track consecutive schedule failures for auto-pause after 3.
+fn migrate_v9_schedule_consecutive_failures(
+    conn: &Connection,
+    from_version: i32,
+) -> Result<(), String> {
+    if from_version >= 9 {
+        return Ok(());
+    }
+    if !table_has_column(conn, "schedules", "consecutive_failures")? {
+        conn.execute(
+            "ALTER TABLE schedules ADD COLUMN consecutive_failures INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| format!("migrate v9 schedules.consecutive_failures: {e}"))?;
+    }
     Ok(())
 }
 

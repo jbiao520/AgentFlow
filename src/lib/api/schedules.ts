@@ -33,6 +33,7 @@ export type Schedule = {
   max_retries: number;
   retry_delay_secs: number;
   retry_attempt: number;
+  consecutive_failures?: number;
 };
 
 export async function listSchedules(): Promise<Schedule[]> {

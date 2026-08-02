@@ -196,6 +196,34 @@
           </div>
         </div>
 
+        <!-- Automation pulse: recent deliveries / upcoming schedules / templates (S6) -->
+        <div class="card-panel overview-automation-pulse" id="overview-automation-pulse" data-od-id="panel-automation-pulse">
+          <div class="panel-title-bar">
+            <div class="panel-title">我的自动化</div>
+            <span id="overview-automation-caption" style="font-size:11px; color:var(--fg-muted); font-family:var(--font-mono);"></span>
+          </div>
+          <div class="overview-automation-grid">
+            <section class="overview-automation-col">
+              <div class="overview-automation-col-title">最近交付</div>
+              <div id="overview-recent-deliveries" class="overview-automation-list">
+                <div class="overview-automation-empty">加载中…</div>
+              </div>
+            </section>
+            <section class="overview-automation-col">
+              <div class="overview-automation-col-title">即将运行</div>
+              <div id="overview-upcoming-schedules" class="overview-automation-list">
+                <div class="overview-automation-empty">加载中…</div>
+              </div>
+            </section>
+            <section class="overview-automation-col">
+              <div class="overview-automation-col-title">可复用模版</div>
+              <div id="overview-recent-templates" class="overview-automation-list">
+                <div class="overview-automation-empty">加载中…</div>
+              </div>
+            </section>
+          </div>
+        </div>
+
         <!-- Recent Agents Usage -->
         <div class="card-panel" data-od-id="panel-recent-agents">
           <div class="panel-title-bar">
@@ -501,7 +529,22 @@
             <div id="task-history-list"></div>
           </div>
 
-          <div style="display:flex; flex-direction:column; gap:14px; overflow-y:auto;">
+          <div style="display:flex; flex-direction:column; gap:14px; overflow-y:auto;" id="task-detail-column">
+            <!-- S2: terminal conclusion bar -->
+            <div class="card-panel task-conclusion-card" id="task-delivery-conclusion" hidden>
+              <div class="task-conclusion-row">
+                <span class="task-conclusion-pill" id="task-conclusion-pill">—</span>
+                <div class="task-conclusion-body">
+                  <div class="task-conclusion-summary" id="task-conclusion-summary">选择任务后显示交付结论</div>
+                  <div class="task-conclusion-meta" id="task-conclusion-meta">—</div>
+                </div>
+              </div>
+            </div>
+            <!-- S3: reuse flywheel CTA -->
+            <div class="card-panel run-reuse-bar" id="run-reuse-bar" hidden>
+              <div class="run-reuse-copy" id="run-reuse-copy">这次跑通了。保存为模版后可复用，也可设为定时。</div>
+              <div class="run-reuse-actions" id="run-reuse-actions"></div>
+            </div>
             <div class="card-panel delivery-card" id="task-delivery-panel">
               <div class="panel-title-bar delivery-card-head">
                 <div class="panel-title">验收交付物</div>
@@ -582,9 +625,12 @@
               </div>
             </div>
 
-            <div class="card-panel task-section-panel" style="margin-bottom:0;">
+            <div class="card-panel task-section-panel" style="margin-bottom:0;" id="task-dag-section">
               <div class="panel-title-bar">
-                <div class="panel-title">任务依赖拓扑图 (Task DAG)</div>
+                <div class="panel-title">
+                  任务依赖拓扑图 (Task DAG)
+                  <button type="button" class="btn btn-secondary btn-sm task-section-fold" id="btn-toggle-dag-section" aria-expanded="true" title="展开/折叠 DAG">折叠 ▴</button>
+                </div>
                 <div style="display:flex; gap:6px;">
                   <button type="button" class="btn btn-secondary btn-sm" id="btn-save-run-template">保存为模版</button>
                   <button type="button" class="btn btn-secondary btn-sm" id="btn-cancel-run">取消任务</button>
@@ -595,7 +641,7 @@
               <div id="task-dag-container" class="task-dag-container resizable-panel"></div>
             </div>
 
-            <div class="terminal-window resizable-panel" style="height:210px;" data-od-id="task-terminal">
+            <div class="terminal-window resizable-panel" style="height:210px;" data-od-id="task-terminal" id="task-log-terminal">
               <div class="terminal-header">
                 <div style="display:flex; gap:10px; align-items:center;">
                   <span>实时终端日志流</span>
@@ -1068,6 +1114,15 @@
 <div class="modal-overlay" id="template-save-modal" aria-hidden="true">
   <div class="modal-card" onclick="event.stopPropagation()" style="width:720px; max-height:85vh; overflow-y:auto;">
     <div id="template-save-body">
+      <div style="padding:24px; text-align:center; color:var(--fg-muted); font-size:13px;">准备中…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Schedule create quick path (S5) -->
+<div class="modal-overlay" id="schedule-create-modal" aria-hidden="true">
+  <div class="modal-card" onclick="event.stopPropagation()" style="width:520px; max-height:85vh; overflow-y:auto;">
+    <div id="schedule-create-body">
       <div style="padding:24px; text-align:center; color:var(--fg-muted); font-size:13px;">准备中…</div>
     </div>
   </div>

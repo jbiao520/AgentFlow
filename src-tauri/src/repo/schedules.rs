@@ -55,7 +55,12 @@ pub struct Schedule {
     pub max_retries: i64,
     pub retry_delay_secs: i64,
     pub retry_attempt: i64,
+    #[serde(default)]
+    pub consecutive_failures: i64,
 }
+
+/// Auto-pause after this many consecutive terminal failures (instantiate or run).
+pub const AUTO_PAUSE_AFTER_FAILURES: i64 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScheduleCreate {
@@ -135,12 +140,14 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Schedule> {
         max_retries: row.get(18)?,
         retry_delay_secs: row.get(19)?,
         retry_attempt: row.get(20)?,
+        consecutive_failures: row.get(21).unwrap_or(0),
     })
 }
 
 const SELECT_COLS: &str = "id, name, template_id, values_json, mode, interval_secs, enabled, \
     next_run_at, last_run_at, last_run_id, last_error, run_count, created_at, updated_at, \
-    cron_expr, window_start, window_end, overlap_policy, max_retries, retry_delay_secs, retry_attempt";
+    cron_expr, window_start, window_end, overlap_policy, max_retries, retry_delay_secs, retry_attempt, \
+    consecutive_failures";
 
 fn validate_values_json(raw: &str) -> Result<String, String> {
     let trimmed = if raw.trim().is_empty() {
@@ -584,13 +591,38 @@ pub fn mark_schedule_fired(
         existing.retry_attempt
     };
     let should_retry = error.is_some() && retry_attempt <= existing.max_retries;
-    let (enabled, next_run_at, next_retry_attempt) = if should_retry {
+
+    // Instantiate failure: bump consecutive_failures. Success start resets only if run later succeeds
+    // (handled in record_schedule_run_result). Instant success with run_id leaves count until run ends.
+    let consecutive = if error.is_some() {
+        existing.consecutive_failures + 1
+    } else if run_id.is_none() {
+        0
+    } else {
+        existing.consecutive_failures
+    };
+
+    let auto_pause = error.is_some() && consecutive >= AUTO_PAUSE_AFTER_FAILURES;
+    let last_error = if auto_pause {
+        let base = error.unwrap_or("failed");
+        Some(format!("{base} · 已自动暂停（连续失败 {consecutive} 次）"))
+    } else {
+        error.map(|s| s.to_string())
+    };
+
+    let (enabled, next_run_at, next_retry_attempt) = if should_retry && !auto_pause {
         (
             true,
             format_unix_as_iso8601(
                 now_u.saturating_add(existing.retry_delay_secs.max(60) as u64),
             ),
             retry_attempt,
+        )
+    } else if auto_pause {
+        (
+            false,
+            next_run_for_mode(&existing, &mode, now_u)?,
+            0,
         )
     } else {
         (
@@ -603,17 +635,19 @@ pub fn mark_schedule_fired(
     conn.execute(
         "UPDATE schedules SET
             enabled=?1, next_run_at=?2, last_run_at=?3, last_run_id=?4,
-            last_error=?5, run_count=?6, updated_at=?7, retry_attempt=?8
-         WHERE id=?9",
+            last_error=?5, run_count=?6, updated_at=?7, retry_attempt=?8,
+            consecutive_failures=?9
+         WHERE id=?10",
         params![
             if enabled { 1 } else { 0 },
             next_run_at,
             now,
             run_id,
-            error,
+            last_error,
             run_count,
             now,
             next_retry_attempt,
+            consecutive,
             id,
         ],
     )
@@ -900,14 +934,25 @@ pub fn record_schedule_run_result(
     if is_manual != 0 {
         // Keep association/telemetry only — never re-enable or invent retries.
         if status == "failed" {
+            let consecutive = schedule.consecutive_failures + 1;
+            let auto_pause = consecutive >= AUTO_PAUSE_AFTER_FAILURES;
+            let err = if auto_pause {
+                format!(
+                    "{} · 已自动暂停（连续失败 {consecutive} 次）",
+                    error.unwrap_or("执行失败")
+                )
+            } else {
+                error.unwrap_or("执行失败").to_string()
+            };
             conn.execute(
-                "UPDATE schedules SET last_error=?1, updated_at=?2 WHERE id=?3",
-                params![error, now, schedule_id],
+                "UPDATE schedules SET last_error=?1, consecutive_failures=?2,
+                 enabled=CASE WHEN ?3 THEN 0 ELSE enabled END, updated_at=?4 WHERE id=?5",
+                params![err, consecutive, if auto_pause { 1 } else { 0 }, now, schedule_id],
             )
             .map_err(|e| format!("schedule manual failure update: {e}"))?;
         } else if status == "success" {
             conn.execute(
-                "UPDATE schedules SET last_error=NULL, updated_at=?1 WHERE id=?2",
+                "UPDATE schedules SET last_error=NULL, consecutive_failures=0, updated_at=?1 WHERE id=?2",
                 params![now, schedule_id],
             )
             .map_err(|e| format!("schedule manual success update: {e}"))?;
@@ -915,19 +960,45 @@ pub fn record_schedule_run_result(
         return Ok(());
     }
 
-    if status == "failed" && schedule.retry_attempt < schedule.max_retries {
-        let next = format_unix_as_iso8601(
-            now_u.saturating_add(schedule.retry_delay_secs.max(60) as u64),
-        );
-        conn.execute(
-            "UPDATE schedules SET enabled=1, next_run_at=?1, last_error=?2,
-             retry_attempt=retry_attempt+1, updated_at=?3 WHERE id=?4",
-            params![next, error, now, schedule_id],
-        )
-        .map_err(|e| format!("schedule retry update: {e}"))?;
+    if status == "failed" {
+        let consecutive = schedule.consecutive_failures + 1;
+        let auto_pause = consecutive >= AUTO_PAUSE_AFTER_FAILURES;
+        let err_msg = if auto_pause {
+            format!(
+                "{} · 已自动暂停（连续失败 {consecutive} 次）",
+                error.unwrap_or("执行失败")
+            )
+        } else {
+            error.unwrap_or("执行失败").to_string()
+        };
+
+        if !auto_pause && schedule.retry_attempt < schedule.max_retries {
+            let next = format_unix_as_iso8601(
+                now_u.saturating_add(schedule.retry_delay_secs.max(60) as u64),
+            );
+            conn.execute(
+                "UPDATE schedules SET enabled=1, next_run_at=?1, last_error=?2,
+                 retry_attempt=retry_attempt+1, consecutive_failures=?3, updated_at=?4 WHERE id=?5",
+                params![next, err_msg, consecutive, now, schedule_id],
+            )
+            .map_err(|e| format!("schedule retry update: {e}"))?;
+        } else {
+            conn.execute(
+                "UPDATE schedules SET enabled=?1, last_error=?2, consecutive_failures=?3,
+                 retry_attempt=0, updated_at=?4 WHERE id=?5",
+                params![
+                    if auto_pause { 0 } else { if schedule.enabled { 1 } else { 0 } },
+                    err_msg,
+                    consecutive,
+                    now,
+                    schedule_id,
+                ],
+            )
+            .map_err(|e| format!("schedule failure update: {e}"))?;
+        }
     } else if status == "success" {
         conn.execute(
-            "UPDATE schedules SET retry_attempt=0, last_error=NULL, updated_at=?1 WHERE id=?2",
+            "UPDATE schedules SET retry_attempt=0, last_error=NULL, consecutive_failures=0, updated_at=?1 WHERE id=?2",
             params![now, schedule_id],
         )
         .map_err(|e| format!("schedule success update: {e}"))?;

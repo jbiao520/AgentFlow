@@ -10,6 +10,7 @@ import {
   type PlanQuestion,
 } from "../../lib/api/orchestrate";
 import { dispatchPlan, startRun } from "../../lib/api/tasks";
+import { listAgents, type Agent } from "../../lib/api/agents";
 import {
   concurrencyControlHtml,
   planSuggestedConcurrency,
@@ -18,6 +19,7 @@ import {
 import { destroySelectsIn, enhanceSelectsIn } from "../form";
 import { showView } from "../router";
 import { formatActionableError, showToast } from "../toast";
+import { buildExecSummary, execSummaryHtml } from "./exec-summary";
 
 const CONC_SELECT_ID = "orch-concurrency";
 
@@ -26,6 +28,11 @@ export type WorkbenchState = {
 };
 
 const state: WorkbenchState = { result: null };
+let workbenchPaintToken = 0;
+/** Agents used for live exec-summary patches (concurrency / async load). */
+let summaryAgents: Agent[] | null = null;
+let summaryPlan: PlanAnalysis | null = null;
+let summaryWarnings: string[] = [];
 
 function setDispatchEnabled(enabled: boolean, reason?: string): void {
   const btn = document.getElementById(
@@ -212,7 +219,11 @@ function renderClarifyPanel(questions: PlanQuestion[]): string {
 const ORCH_RUN_BTN_HTML =
   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>启动智能调度拆解</span>';
 
-export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): void {
+function paintPlanWorkbench(
+  plan: PlanAnalysis,
+  warnings: string[],
+  agents: Agent[] | null,
+): void {
   const root = document.getElementById("orch-results");
   if (!root) return;
 
@@ -280,6 +291,12 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
 
   const suggested = planSuggestedConcurrency(plan);
   const concControl = concurrencyControlHtml(suggested, CONC_SELECT_ID);
+  const summary = buildExecSummary(plan, {
+    agents,
+    concurrency: suggested,
+    warnings,
+  });
+  const summaryBlock = execSummaryHtml(summary);
 
   const actionBtn = needsClarify
     ? `<div class="orch-action-row">${concControl}<button class="btn btn-primary btn-sm btn-dispatch" id="confirm-answers-btn">提交并执行</button></div>`
@@ -305,6 +322,7 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
       </div>
       ${actionBtn}
     </div>
+    ${summaryBlock}
     ${warnBlock}
     <div class="orch-timeline">
       ${clarifyBlock}
@@ -335,6 +353,7 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
         <div class="step-content">
           <div class="step-header">
             <div class="step-title">Agent · Skill · Model 路由矩阵</div>
+            <span class="step-header-meta">明细可滚动</span>
           </div>
           <div class="orch-route-table-wrap">
             <table class="orch-route-table">
@@ -398,6 +417,56 @@ export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): voi
   }
 
   enhanceSelectsIn(root);
+  summaryPlan = plan;
+  summaryWarnings = warnings;
+  summaryAgents = agents;
+  bindExecSummaryLiveUpdates();
+}
+
+/** Patch summary in place — never re-paint the whole workbench (preserves Q&A). */
+function patchExecSummary(): void {
+  const plan = summaryPlan;
+  if (!plan) return;
+  const current = document.getElementById("orch-exec-summary");
+  if (!current) return;
+  const suggested = planSuggestedConcurrency(plan);
+  const concurrency = readConcurrencySelect(CONC_SELECT_ID, suggested);
+  const summary = buildExecSummary(plan, {
+    agents: summaryAgents,
+    concurrency,
+    warnings: summaryWarnings,
+  });
+  const tmp = document.createElement("div");
+  tmp.innerHTML = execSummaryHtml(summary);
+  const next = tmp.firstElementChild;
+  if (next) current.replaceWith(next);
+}
+
+function bindExecSummaryLiveUpdates(): void {
+  const sel = document.getElementById(
+    CONC_SELECT_ID,
+  ) as HTMLSelectElement | null;
+  if (!sel || sel.dataset.summaryBound === "1") return;
+  sel.dataset.summaryBound = "1";
+  sel.addEventListener("change", () => {
+    patchExecSummary();
+  });
+}
+
+export function renderPlanWorkbench(plan: PlanAnalysis, warnings: string[]): void {
+  const token = ++workbenchPaintToken;
+  // Paint once with interactive form; enrich summary when agents arrive.
+  // Do not full-repaint after listAgents — that wiped clarification answers.
+  paintPlanWorkbench(plan, warnings, null);
+  void listAgents()
+    .then((agents) => {
+      if (token !== workbenchPaintToken) return;
+      summaryAgents = agents;
+      patchExecSummary();
+    })
+    .catch(() => {
+      /* keep summary without cross-workspace */
+    });
 }
 
 export function renderOrchestrateError(error: string, raw: string | null): void {

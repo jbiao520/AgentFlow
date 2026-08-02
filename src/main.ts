@@ -14,6 +14,7 @@ import { initOrchestratorWorkbench } from "./ui/orchestrator/workbench";
 import { initOverview } from "./ui/overview/page";
 import { initAgentDetailNav } from "./ui/router";
 import { initSchedules } from "./ui/schedules/page";
+import { initCreateScheduleModal } from "./ui/schedules/create-modal";
 import { initNotifications } from "./ui/notifications";
 import { initSettings } from "./ui/settings/page";
 import { initTaskCenter } from "./ui/tasks/center";
@@ -22,6 +23,7 @@ import { initSaveTemplateWizard } from "./ui/templates/save-wizard";
 import { initI18n } from "./ui/i18n";
 import { initSplitResize } from "./ui/split-resize";
 import { initTheme } from "./ui/theme";
+import { initExternalLinkHandler } from "./ui/external-links";
 
 function mountApp(): void {
   const root = document.getElementById("app");
@@ -29,6 +31,7 @@ function mountApp(): void {
     throw new Error("#app root missing");
   }
   root.innerHTML = shellHtml;
+  initExternalLinkHandler();
   initTheme();
   initI18n();
   // Upgrade static <select class="form-select"> controls (filters, settings, modals).
@@ -49,6 +52,7 @@ function mountApp(): void {
   initTemplateLibrary();
   initSaveTemplateWizard();
   initSchedules();
+  initCreateScheduleModal();
   initNotifications();
   initSplitResize();
   void initAppInfo();

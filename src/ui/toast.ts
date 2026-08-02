@@ -9,6 +9,14 @@ export type ToastAction = {
   onClick: () => void | Promise<void>;
 };
 
+const TOAST_EXIT_MS = 200;
+
+function dismissToast(toast: HTMLElement): void {
+  if (toast.classList.contains("is-leaving")) return;
+  toast.classList.add("is-leaving");
+  window.setTimeout(() => toast.remove(), TOAST_EXIT_MS);
+}
+
 export function showToast(
   message: string,
   opts?: { kind?: ToastKind; durationMs?: number },
@@ -38,11 +46,7 @@ export function showToast(
   if (textSpan) textSpan.textContent = t(message);
   container.appendChild(toast);
 
-  window.setTimeout(() => {
-    toast.style.opacity = "0";
-    toast.style.transition = "opacity 0.2s ease";
-    window.setTimeout(() => toast.remove(), 200);
-  }, duration);
+  window.setTimeout(() => dismissToast(toast), duration);
 }
 
 /** Show a persistent in-app notification with direct next actions. */
@@ -66,7 +70,7 @@ export function showActionToast(
   const actionBox = document.createElement("span");
   actionBox.className = "toast-actions";
   toast.append(dot, body, actionBox);
-  const dismiss = (): void => toast.remove();
+  const dismiss = (): void => dismissToast(toast);
   for (const action of actions) {
     const button = document.createElement("button");
     button.type = "button";
@@ -80,6 +84,130 @@ export function showActionToast(
   }
   container.appendChild(toast);
   window.setTimeout(dismiss, opts?.durationMs ?? 12_000);
+}
+
+export type NearConfirmOptions = {
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /** Auto-dismiss without confirming. Default 6s. */
+  durationMs?: number;
+};
+
+type NearConfirmSession = {
+  close: (confirmed: boolean) => void;
+};
+
+let nearConfirmSession: NearConfirmSession | null = null;
+
+function placeNearConfirm(el: HTMLElement, anchor: HTMLElement): void {
+  const gap = 8;
+  const rect = anchor.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  // Measure after attach
+  const pop = el.getBoundingClientRect();
+  let top = rect.bottom + gap;
+  let left = rect.right - pop.width;
+
+  if (left < 8) left = 8;
+  if (left + pop.width > vw - 8) left = Math.max(8, vw - pop.width - 8);
+  if (top + pop.height > vh - 8) {
+    top = Math.max(8, rect.top - pop.height - gap);
+  }
+  el.style.top = `${Math.round(top)}px`;
+  el.style.left = `${Math.round(left)}px`;
+}
+
+/**
+ * Small confirm chip anchored next to a button (for lightweight destructive actions).
+ * Outside click / Escape / timeout → false. Confirm → true.
+ */
+export function confirmNear(
+  anchor: HTMLElement,
+  opts: NearConfirmOptions,
+): Promise<boolean> {
+  if (nearConfirmSession) nearConfirmSession.close(false);
+
+  const pop = document.createElement("div");
+  pop.className = "confirm-near";
+  pop.setAttribute("role", "alertdialog");
+  pop.setAttribute("aria-modal", "true");
+
+  const msg = document.createElement("span");
+  msg.className = "confirm-near-msg";
+  msg.textContent = t(opts.message);
+
+  const actions = document.createElement("span");
+  actions.className = "confirm-near-actions";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "confirm-near-btn";
+  cancelBtn.textContent = t(opts.cancelLabel ?? "取消");
+
+  const confirmBtn = document.createElement("button");
+  confirmBtn.type = "button";
+  confirmBtn.className = "confirm-near-btn is-danger";
+  confirmBtn.textContent = t(opts.confirmLabel ?? "删除");
+
+  actions.append(cancelBtn, confirmBtn);
+  pop.append(msg, actions);
+  document.body.appendChild(pop);
+  placeNearConfirm(pop, anchor);
+
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const timer = window.setTimeout(
+      () => close(false),
+      opts.durationMs ?? 6000,
+    );
+
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close(false);
+      }
+    };
+    const onPointer = (e: Event): void => {
+      const target = e.target;
+      if (!(target instanceof Node)) return;
+      if (pop.contains(target) || anchor.contains(target)) return;
+      close(false);
+    };
+
+    const close = (confirmed: boolean): void => {
+      if (settled) return;
+      settled = true;
+      nearConfirmSession = null;
+      window.clearTimeout(timer);
+      document.removeEventListener("keydown", onKey, true);
+      // Delay removal of outside listener so the opening click doesn't dismiss.
+      window.setTimeout(() => {
+        document.removeEventListener("pointerdown", onPointer, true);
+      }, 0);
+      pop.classList.add("is-leaving");
+      window.setTimeout(() => pop.remove(), TOAST_EXIT_MS);
+      resolve(confirmed);
+    };
+
+    nearConfirmSession = { close };
+    cancelBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      close(false);
+    });
+    confirmBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      close(true);
+    });
+    document.addEventListener("keydown", onKey, true);
+    // Skip the click that opened us.
+    window.setTimeout(() => {
+      if (!settled) document.addEventListener("pointerdown", onPointer, true);
+    }, 0);
+
+    requestAnimationFrame(() => confirmBtn.focus());
+  });
 }
 
 /** Map common backend errors to actionable copy. */

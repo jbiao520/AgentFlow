@@ -9,7 +9,6 @@ import {
 } from "../../lib/api/templates";
 import type { PlanAnalysis } from "../../lib/api/orchestrate";
 import { formatActionableError, showToast } from "../toast";
-import { showView } from "../router";
 import { refreshTemplateLibrary } from "./page";
 
 export type SaveTemplateSource = {
@@ -237,6 +236,50 @@ function readFormIntoState(): void {
   }
 }
 
+function renderSuccess(template: {
+  id: string;
+  name: string;
+}): void {
+  const el = body();
+  if (!el) return;
+  el.innerHTML = `
+    <div style="padding:8px 4px 4px;">
+      <div style="font-size:15px; font-weight:700; color:var(--fg-primary); margin-bottom:8px;">✓ 已保存「${escapeHtml(template.name)}」</div>
+      <p style="font-size:12.5px; color:var(--fg-secondary); line-height:1.5; margin:0 0 18px;">
+        下次只需填写变量即可复用。可设为定时自动跑，或立即执行一次。
+      </p>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end;">
+        <button type="button" class="btn btn-primary" id="tpl-success-schedule">设为定时</button>
+        <button type="button" class="btn btn-secondary" id="tpl-success-run">配置并执行</button>
+        <button type="button" class="btn btn-secondary" id="tpl-success-library">查看模版库</button>
+      </div>
+    </div>
+  `;
+  el.querySelector("#tpl-success-schedule")?.addEventListener("click", () => {
+    closeSaveTemplateModal();
+    const values: Record<string, string> = {};
+    for (const v of state.variables) {
+      if (v.default) values[v.key] = v.default;
+    }
+    void import("../schedules/create-modal").then((m) =>
+      m.openCreateScheduleModal({
+        templateId: template.id,
+        name: `${template.name} 定时`,
+        values,
+      }),
+    );
+  });
+  el.querySelector("#tpl-success-run")?.addEventListener("click", () => {
+    closeSaveTemplateModal();
+    void import("./page").then((m) => m.openTemplate(template.id));
+    showToast("已打开模版，填写变量后即可执行", { kind: "info" });
+  });
+  el.querySelector("#tpl-success-library")?.addEventListener("click", () => {
+    closeSaveTemplateModal();
+    void import("./page").then((m) => m.openTemplate(template.id));
+  });
+}
+
 async function commitSave(): Promise<void> {
   if (state.busy) return;
   readFormIntoState();
@@ -246,7 +289,7 @@ async function commitSave(): Promise<void> {
   }
   setBusy(true);
   try {
-    await createTemplate({
+    const created = await createTemplate({
       name: state.name.trim(),
       description: state.description.trim() || null,
       sourceGoalId: state.polishMeta?.source_goal_id ?? state.source.goalId,
@@ -257,9 +300,8 @@ async function commitSave(): Promise<void> {
       variablesJson: JSON.stringify(state.variables),
     });
     showToast("模版已保存", { kind: "success" });
-    closeSaveTemplateModal();
     void refreshTemplateLibrary();
-    showView("templates");
+    renderSuccess(created);
   } catch (e) {
     showToast(
       `保存失败: ${formatActionableError(e instanceof Error ? e.message : String(e))}`,
