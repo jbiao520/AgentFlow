@@ -378,6 +378,6 @@ mod tests {
                 r.get(0)
             })
             .expect("version");
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
     }
 }
